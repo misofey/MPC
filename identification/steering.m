@@ -1,11 +1,10 @@
-% load("Niek_RDW_skidpad_7.3ms_2024_11_23T145500_export.mat");
+load("Niek_RDW_skidpad_7.3ms_2024_11_23T145500_export.mat");
 % [t10, t11] = load("Niek_RDW_skidpad_flatout_2024_11_23T145959_export.mat");
-load("20")
 
 t = t0.time;
 t = t(1):0.004:t(end);
 
-r = interp1(t0.time, t0.ControlsOut_GyroZ, t);--
+r = interp1(t0.time, t0.ControlsOut_GyroZ, t);
 steer = interp1(t0.time, t0.ControlsOut_SteeringSteer, t);
 vx = interp1(t1.time, t1.velx, t);
 vy = interp1(t1.time, t1.vely, t);
@@ -63,24 +62,24 @@ gains_5 = dlqr(tune_sys_5.A, tune_sys_5.B, lqr_cost, lqr_r, lqr_n)
 gains_10 = dlqr(tune_sys_10.A, tune_sys_10.B, lqr_cost, lqr_r, lqr_n)
 
 
-dcgain()
 
 % states: vy, r, heading
 function [A,B,C,D,E,dx0,x0,u0,y0,Delays] = dataFcnSteering(~,vx)
     m = 220;
-    Iz = 102;
-    C_data_y = 0.3*[1.537405752168591e+04, 2.417765976460659e+04, 3.121158998819641e+04, 3.636055041362088e+04];
+    Iz = 300;
+    C_data_y = [1.537405752168591e+04, 2.417765976460659e+04, 3.121158998819641e+04, 3.636055041362088e+04];
     C_data_x = [300 500 700 900];
     wheelbase = 1.53;
-    lr = 1.00;
+    lr = wheelbase*(1-0.51);
     lf = wheelbase - lr;
-    C = [interp1(C_data_x, C_data_y, 9.81*m/2*lr/wheelbase)*2 interp1(C_data_x, C_data_y, 9.81*m/2*lf/wheelbase)*2];
+    % [front, rear]
+    C = [interp1(C_data_x, C_data_y, (9.81*m/2)*(lr/wheelbase))*2 interp1(C_data_x, C_data_y, (9.81*m/2)*(lf/wheelbase))*2];
     L = [lf lr];
 
-    steering_scaling = 0.4 * pi/2;
+    steering_scaling = 0.4 /(pi/2);
 
-    A = [-(C(1) + C(2)) / (m * vx), -vx - (C(1) * L(1) - C(2) * L(2)) / (m * vx), 0;
-        (C(1) * L(1) - C(2) * L(2)) / Iz, -(L(1) * L(1) * C(1) + L(2) * L(2) * C(2)) / (Iz * vx), 0;
+    A = [-(C(1) + C(2)) / (m * vx), vx + (C(2)*L(2) - C(1)*L(1)) / (m * vx), 0;
+        (C(2)*L(2) - C(1)*L(1)) / Iz, -(L(1)*L(1)*C(1) + L(2)*L(2)*C(2)) / (Iz * vx), 0;
         0 1 0];
 
     B = [-C(1) / m; -(L(1) * C(1)) / Iz; 0] * steering_scaling;
@@ -111,4 +110,4 @@ function[t, r, vy, vx, steer] = preprocess(t, r, vy, vx, steer)
     vy = vy(1:end_index);
     vx = vx(1:end_index);
     steer = steer(1:end_index);
-    endzzzz20250802_skidpadRun7_6.5ms_2025_02_08T121220_export
+end
