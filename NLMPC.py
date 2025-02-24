@@ -1,11 +1,9 @@
 from acados_template import AcadosOcp, AcadosModel, AcadosOcpSolver
 import casadi as cs
-import types
 import numpy as np
-import matplotlib.pyplot as plt
 
 
-class NLOCP(AcadosOcp):
+class NLOcp(AcadosOcp):
     def __init__(self, filename="config.yaml"):
         AcadosOcp.__init__()
 
@@ -26,6 +24,9 @@ class NLOCP(AcadosOcp):
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
+        # Model setup
+        self.model = AcadosModel()
+
         # Model name
         self.model.name = "NonlinearDynamicBycicleModel"
 
@@ -43,8 +44,6 @@ class NLOCP(AcadosOcp):
         self.set_constraints()
         # Set cost
         self.set_cost()
-        # Set solver options
-        self.set_solver_options()
 
     def get_tyre_stiffness(self) -> (float, float):
         C_data_y = np.array(
@@ -82,7 +81,7 @@ class NLOCP(AcadosOcp):
 
         d_v_y = -(self.Cf * self.Cr) * v_y
         d_v_y += (-v_x + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * v_x)) * r
-        d_v_y += self.Cf * self.m * wheel_angle
+        d_v_y -= self.Cf * self.m * wheel_angle
 
         d_r = (self.lf * self.Cf - self.lr * self.Cr) / self.I_z * v_y
         d_r += (
@@ -90,7 +89,7 @@ class NLOCP(AcadosOcp):
             / (self.I_z * v_x)
             * r
         )
-        d_r += self.lf * self.Cf / self.I_z * wheel_angle
+        d_r -= self.lf * self.Cf / self.I_z * wheel_angle
 
         d_steering = steering_rate
 
@@ -145,21 +144,41 @@ class NLOCP(AcadosOcp):
         # Initial parameter trajectory
         self.parameter_values = np.array([7.0])
 
-    def set_solver_options(self) -> None:
 
+class NLSolver(AcadosOcpSolver):
+    def __init__(self, ocp: NLOcp):
+        # Set solver options in OCP
+        self.ocp = ocp
+        self.set_solver_options(self.ocp)
+        super().__init__(self.ocp)
+
+    def set_solver_options(self, ocp: NLOcp) -> None:
         # set QP solver and integration
-        self.solver_options.tf = self.Tf
-        self.solver_options.N_horizon = self.N
+        ocp.solver_options.tf = ocp.Tf
+        ocp.solver_options.N_horizon = ocp.N
         # self.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES'
-        self.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        self.solver_options.nlp_solver_type = "SQP"
-        self.solver_options.hessian_approx = "EXACT"
-        self.solver_options.integrator_type = "ERK"
+        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+        ocp.solver_options.nlp_solver_type = "SQP"
+        ocp.solver_options.hessian_approx = "EXACT"
+        ocp.solver_options.integrator_type = "ERK"
 
-        self.solver_options.nlp_solver_max_iter = 200
-        self.solver_options.tol = 1e-4
+        ocp.solver_options.nlp_solver_max_iter = 200
+        ocp.solver_options.tol = 1e-4
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
-        self.solver_options.print_level = 0
-        self.solver_options.nlp_solver_exact_hessian = True
-        self.solver_options.qp_solver_warm_start = 0
+        ocp.solver_options.print_level = 0
+        ocp.solver_options.nlp_solver_exact_hessian = True
+        ocp.solver_options.qp_solver_warm_start = 0
+
+    def solve_problem(self, x0, ref_points, p):
+        self.set(0, "lbx", x0)
+        self.set(0, "ubx", x0)
+
+        for i in range(self.ocp.N):
+            self.cost_set(i, "y_ref", ref_points[i, :])
+            self.set(i, "p", p[i])
+
+        status = self.solve()
+        trajectory = self.get_flat("x")
+
+        return status, trajectory
