@@ -4,13 +4,13 @@ import numpy as np
 
 
 class NLOcp(AcadosOcp):
-    def __init__(self, filename="config.yaml"):
+    def __init__(self, N, Tf):
         AcadosOcp.__init__()
 
         ### Constants ###
         # Simulation constants
-        self.N = 30
-        self.Tf = 2
+        self.N = N
+        self.Tf = Tf
         self.n_states = 7
         self.n_inputs = 1
         self.n_outputs = 6
@@ -23,6 +23,11 @@ class NLOcp(AcadosOcp):
         self.lr = (1 - self.x_cg) * self.wbase  # Rear moment arm [m]
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
+
+        self.max_steering = 0.4
+        self.max_steering_rate = (
+            2 * self.max_steering
+        )  # one second from full left to full right
 
         # Model setup
         self.model = AcadosModel()
@@ -83,7 +88,7 @@ class NLOcp(AcadosOcp):
         d_v_y += (-v_x + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * v_x)) * r
         d_v_y -= self.Cf * self.m * wheel_angle
 
-        d_r = (self.lf * self.Cf - self.lr * self.Cr) / self.I_z * v_y
+        d_r = (self.lr * self.Cr - self.lf * self.Cf) / self.I_z * v_y
         d_r += (
             -(self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
             / (self.I_z * v_x)
@@ -107,15 +112,15 @@ class NLOcp(AcadosOcp):
 
         # Bounds for self.model.x
         self.constraints.idxbx = np.array([6])
-        self.constraints.lbx = np.array([-0.4])
-        self.constraints.ubx = np.array([0.4])
+        self.constraints.lbx = np.array([-self.max_steering])
+        self.constraints.ubx = np.array([self.max_steering])
 
         # Bounds for input
         self.constraints.idxbu = np.array(
             [0]
         )  # the 0th input has the constraints, so J_bu = [1]
-        self.constraints.lbu = np.array([-10])
-        self.constraints.ubu = np.array([10])
+        self.constraints.lbu = np.array([-self.max_steering])
+        self.constraints.ubu = np.array([self.max_steering])
 
     def set_cost(self) -> None:
 
