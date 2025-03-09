@@ -119,8 +119,8 @@ class NLOcp(AcadosOcp):
         self.constraints.idxbu = np.array(
             [0]
         )  # the 0th input has the constraints, so J_bu = [1]
-        self.constraints.lbu = np.array([-self.max_steering])
-        self.constraints.ubu = np.array([self.max_steering])
+        self.constraints.lbu = np.array([-self.max_steering_rate])
+        self.constraints.ubu = np.array([self.max_steering_rate])
 
     def set_cost(self) -> None:
 
