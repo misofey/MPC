@@ -48,7 +48,12 @@ spec = [
 # @numba.experimental.jitclass(spec)
 class SkidpadPlanner:
     def __init__(
-        self, target_vel: float, max_accel: float = 10, Nt: float = 10, dt: float = 0.2, slowdown_speed_factor=0.5
+        self,
+        target_vel: float,
+        max_accel: float = 10,
+        Nt: float = 10,
+        dt: float = 0.2,
+        slowdown_speed_factor=0.5,
     ):
         self.target_vel = target_vel  # [m/s]
         self.max_accel = max_accel  # [m/s^2]
@@ -57,25 +62,33 @@ class SkidpadPlanner:
 
         accel_time = self.target_vel / self.max_accel
         self.accel_zone_1_start = 0
-        self.accel_zone_1_end = self.max_accel / 2 * accel_time * accel_time  # s = a/2 t^2
+        self.accel_zone_1_end = (
+            self.max_accel / 2 * accel_time * accel_time
+        )  # s = a/2 t^2
 
         self.slowdown_speed_factor = slowdown_speed_factor
 
         decel_time = accel_time * (1 - slowdown_speed_factor)
         self.braking_zone_1_start = center + 1 + 4 * lap_length
         self.braking_zone_1_end = (
-            self.braking_zone_1_start + decel_time * self.target_vel + self.max_accel / 2 * decel_time * decel_time
+            self.braking_zone_1_start
+            + decel_time * self.target_vel
+            + self.max_accel / 2 * decel_time * decel_time
         )
 
         decel_time_2 = accel_time * slowdown_speed_factor
         self.braking_zone_2_start = center + end_straight_length + 4 * lap_length
-        self.braking_zone_2_end = self.braking_zone_2_start + decel_time_2 * self.max_accel
+        self.braking_zone_2_end = (
+            self.braking_zone_2_start + decel_time_2 * self.max_accel
+        )
         self.prev_progress = 0
 
     def set_starting_position(self, progress):
         accel_time = self.target_vel / self.max_accel
         self.accel_zone_1_start = progress
-        self.accel_zone_1_end = self.max_accel / 2 * accel_time * accel_time + progress  # s = a/2 t^2
+        self.accel_zone_1_end = (
+            self.max_accel / 2 * accel_time * accel_time + progress
+        )  # s = a/2 t^2
 
     def progress2speed(self, progress):
         speed = 0
@@ -86,16 +99,18 @@ class SkidpadPlanner:
             # braking zone 2
             speed = (
                 self.target_vel * self.slowdown_speed_factor
-                - (progress - self.braking_zone_2_start) * self.target_vel * self.slowdown_speed_factor
+                - (progress - self.braking_zone_2_start)
+                * self.target_vel
+                * self.slowdown_speed_factor
             )
         elif self.braking_zone_2_start > progress > self.braking_zone_1_end:
             # slowdown zone
             speed = self.target_vel * self.slowdown_speed_factor
         elif self.braking_zone_1_end > progress > self.braking_zone_1_start:
             # braking zone 1
-            speed = self.target_vel - (progress - self.braking_zone_1_start) * self.target_vel * (
-                1 - self.slowdown_speed_factor
-            )
+            speed = self.target_vel - (
+                progress - self.braking_zone_1_start
+            ) * self.target_vel * (1 - self.slowdown_speed_factor)
         elif self.braking_zone_1_start > progress > self.accel_zone_1_end:
             speed = self.target_vel
         elif self.accel_zone_1_end > progress > self.accel_zone_1_start:
@@ -129,8 +144,12 @@ class SkidpadPlanner:
                 positions[i, 3] = 0
             elif ((progress - center) // (2 * lap_length)) > 0:
                 # left side laps
-                positions[i, 0] = center + np.sin((progress - center - 2 * lap_length) / r) * r
-                positions[i, 1] = r - np.cos((progress - center - 2 * lap_length) / r) * r
+                positions[i, 0] = (
+                    center + np.sin((progress - center - 2 * lap_length) / r) * r
+                )
+                positions[i, 1] = (
+                    r - np.cos((progress - center - 2 * lap_length) / r) * r
+                )
                 positions[i, 2] = np.cos((progress - center) / r)
                 positions[i, 3] = np.sin((progress - center) / r)
             elif (progress - center) > 0:
@@ -223,7 +242,8 @@ class SkidpadPlanner:
             for i in range(Nt):
                 speeds[i] = min(self.progress2speed(progresses[i]), self.target_vel)
                 speeds[i] = min(
-                    self.progress2speed(progresses[i] + speeds[i] * dt / 2), self.target_vel
+                    self.progress2speed(progresses[i] + speeds[i] * dt / 2),
+                    self.target_vel,
                 )  # overwrites prvious line?
                 progresses[i + 1] = progresses[i] + speeds[i] * dt
 
@@ -233,7 +253,9 @@ class SkidpadPlanner:
         waypoints[:, 0] -= x
         waypoints[:, 1] -= y
 
-        heading_derotation = np.array([[np.cos(heading), -np.sin(heading)], [np.sin(heading), np.cos(heading)]])
+        heading_derotation = np.array(
+            [[np.cos(heading), -np.sin(heading)], [np.sin(heading), np.cos(heading)]]
+        )
         waypoints[:, 2:] = waypoints[:, 2:] @ heading_derotation
         waypoints[:, :2] = waypoints[:, :2] @ heading_derotation
         return waypoints, speeds, progresses[0], heading_derotation
