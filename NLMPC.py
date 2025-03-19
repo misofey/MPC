@@ -62,8 +62,8 @@ class NLOcp(AcadosOcp):
         )
         C_data_x = [300, 500, 700, 900]
 
-        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y) * 0.2
-        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y) * 0.2
+        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y) * 0.5
+        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y) * 0.5
 
         return Cf, Cr
 
@@ -87,7 +87,7 @@ class NLOcp(AcadosOcp):
         d_cos_heading = -sin_heading * r
         d_sin_heading = cos_heading * r
 
-        d_v_y = -(self.Cf * self.Cr) / (self.m * v_x + 0.1) * v_y
+        d_v_y = -(self.Cf + self.Cr) / (self.m * v_x + 0.1) * v_y
         d_v_y += (
             (-v_x + (self.Cr * self.lr - self.Cf * self.lf)) / (self.m * v_x + 0.1) * r
         )
@@ -147,8 +147,8 @@ class NLOcp(AcadosOcp):
         self.cost.cost_type_e = "LINEAR_LS"
 
         # Cost matrices
-        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-4, 1e-1]) * 0.01
-        self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e0, 0.7e0, 1e-2, 0]) * 0.01
+        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-4, 1e-1]) * 0.05
+        self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e0, 0.7e0, 1e-2, 0]) * 0.1
 
         # Reference trajectory
         self.cost.yref = np.array([0, 0, 1, 0, 0, 0])
@@ -204,13 +204,16 @@ class NLSolver(AcadosOcpSolver):
             self.cost_set(i, "yref", ref_points[i, :])
             self.set(i, "p", p[i])
 
-        self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
-        self.set(0, "lbx", starting_state)
-        self.set(0, "ubx", starting_state)
-
-        status = self.solve()
+        # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
+        # self.set(0, "lbx", starting_state)
+        # self.set(0, "ubx", starting_state)
+        #
+        # status = self.solve()
         # trajectory = self.get_flat("x")
         # inputs = self.get_flat("u")
+
+        u0 = self.solve_for_x0(starting_state)
+        print(u0)
 
         # fish out the results from the solver
         trajectory = np.zeros([self.ocp.N + 1, self.ocp.n_states])
@@ -225,4 +228,5 @@ class NLSolver(AcadosOcpSolver):
         # plt.plot(trajectory[:, -1], label="angle")
         # plt.plot(inputs, label="rate")
         # plt.show()
+        status = 0
         return status, trajectory, inputs

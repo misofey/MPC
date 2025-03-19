@@ -218,8 +218,8 @@ class Simulator:
 
 
 if __name__ == "__main__":
-    N = 100
-    Tf = 1.0
+    N = 200
+    Tf = 0.5
     acados_print_level = 2
     # starting_state = [
     #     5.0,
