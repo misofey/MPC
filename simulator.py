@@ -107,7 +107,7 @@ class Simulator:
         self.ocp = NLOcp(self.N, self.Tf)
         self.MPC_controller = NLSolver(self.ocp, acados_print_level)
         if starting_state is None:
-            starting_pose = [12.0, 0.1, 1.0, 0]
+            starting_pose = [15.0, 0.1, 1.0, 0]
             starting_velocity = [15.0, 0.0, 0.0]
             starting_steering_angle = [0.0]
         else:
@@ -175,7 +175,9 @@ class Simulator:
         status, trajectory, inputs = self.MPC_controller.optimize(
             self.red_state, waypoints, speeds
         )
-        steer = trajectory[2, 6]
+        steer = trajectory[1, 6]
+
+        steer = inputs[0]
         # inputs = np.append(inputs, [0])
         print("steer: ", steer)
 
@@ -191,10 +193,10 @@ class Simulator:
         #     [trajectory, inputs.reshape([-1, 1])], axis=1
         # )
 
-        # plotting.plot_path_and_heading(self.planned_trajectory, self.planned_references)
+        plotting.plot_path_and_heading(self.planned_trajectory, self.planned_references)
 
-        t = np.linspace(0, Tf, N + 1)
-        plotting.plot_steering(simulator.planned_trajectory[:, :7], inputs, t)
+        # t = np.linspace(0, Tf, N + 1)
+        # plotting.plot_steering(simulator.planned_trajectory[:, :7], inputs, t)
         plt.draw()
         plt.show(block=False)
 
@@ -218,7 +220,7 @@ class Simulator:
 
 
 if __name__ == "__main__":
-    N = 200
+    N = 25
     Tf = 0.5
     acados_print_level = 2
     # starting_state = [
@@ -241,7 +243,7 @@ if __name__ == "__main__":
     # simulator.test_pathplanning()
     plt.ion()
     history = [simulator.full_state]
-    for i in range(100):
+    for i in range(1000):
         input("do a button press to optimize")
         # print(simulator.full_state)
         simulator.step()

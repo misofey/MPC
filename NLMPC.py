@@ -25,7 +25,7 @@ class NLOcp(AcadosOcp):
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = 0.4
+        self.max_steering = 0.8
         self.max_steering_rate = (
             2 * self.max_steering
         )  # one second from full left to full right
@@ -62,8 +62,8 @@ class NLOcp(AcadosOcp):
         )
         C_data_x = [300, 500, 700, 900]
 
-        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y) * 0.5
-        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y) * 0.5
+        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y)
+        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y)
 
         return Cf, Cr
 
