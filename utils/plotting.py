@@ -8,7 +8,7 @@ def plot_path(path):
 
 
 def plot_path_and_heading(data, ref=None):
-    plt.figure(figsize=(10, 10))
+    # plt.figure(figsize=(10, 10))
     # plt.plot(data[:, 0], data[:, 1])
     if ref is None:
         plot_directions(data)
@@ -17,27 +17,32 @@ def plot_path_and_heading(data, ref=None):
 
 
 def plot_directions(x, ref=None):
+    t = np.arange(0, x.shape[0])
     plt.quiver(
         x[:, 0],
         x[:, 1],
         x[:, 2],
         x[:, 3],
+        t,
         label="position",
         angles="xy",
         scale_units="xy",
         scale=30,
-        color="r",
+        cmap="turbo",
     )
     if ref is not None:
+        t = np.arange(0, ref.shape[0])
         plt.quiver(
             ref[:, 0],
             ref[:, 1],
             ref[:, 2],
             ref[:, 3],
+            t,
             label="reference",
             angles="xy",
             scale_units="xy",
             scale=30,
+            cmap="brg",
         )
     plt.legend()
     ax = plt.gca()
@@ -48,3 +53,9 @@ def plot_directions(x, ref=None):
     ymax = np.max(x[:, 1]) + 1
     plt.xlim([xmin, xmax])
     plt.ylim([ymin, ymax])
+
+
+def plot_steering(x, u, t):
+    plt.plot(t, x[:, 6], label="wheel angle")
+    plt.plot(t[:-1], u, label="steering rate")
+    plt.legend()

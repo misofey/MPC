@@ -1,10 +1,27 @@
-try:
-    from NLMPC import NLSolver, NLOcp
+# import os
+#
+# if "LD_LIBRARY_PATH" not in os.environ:
+#     os.environ["LD_LIBRARY_PATH"] = (
+#         "/home/miso/DUT/DUT25-Autonomous/src/controllers/acados/lib"
+#     )
+#     if "ACADOS_SOURCE_DIR" not in os.environ:
+#         # If it doesn't exist, export it with a default value
+#         os.environ["ACADOS_SOURCE_DIR"] = (
+#             "/home/miso/DUT/DUT25-Autonomous/src/controllers/acados"
+#         )
+# else:
+#     os.environ["LD_LIBRARY_PATH"] += (
+#         os.pathsep + "/home/miso/DUT/DUT25-Autonomous/src/controllers/acados/lib"
+#     )
+#     if "ACADOS_SOURCE_DIR" not in os.environ:
+#         # If it doesn't exist, export it with a default value
+#         os.environ["ACADOS_SOURCE_DIR"] = (
+#             "/home/miso/DUT/DUT25-Autonomous/src/controllers/acados"
+#         )
+#
 
-    acados_found = True
-except:
-    print("acados not found, optimizaiton will not work")
-    acados_found = False
+from NLMPC import NLSolver, NLOcp
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -74,22 +91,31 @@ class Dynamics:
 
 
 class Simulator:
-    def __init__(self, N, Tf, acados_print_level=0):
+    def __init__(
+        self,
+        N,
+        Tf,
+        acados_print_level=0,
+        starting_state=None,
+        starting_lap=None,
+        figures=False,
+    ):
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
 
-        if acados_found:
-            self.ocp = NLOcp(self.N, self.Tf)
-            self.MPC_controller = NLSolver(self.ocp, acados_print_level)
-
-        starting_pose = [14.0, 0.0, 1.0, 0]
-        starting_velocity = [8.0, 0, 0]
-        starting_steering_angle = [0.0]
-        starting_state = np.array(
-            starting_pose + starting_velocity[1:] + starting_steering_angle
-        )
-        starting_lap = 0
+        self.ocp = NLOcp(self.N, self.Tf)
+        self.MPC_controller = NLSolver(self.ocp, acados_print_level)
+        if starting_state is None:
+            starting_pose = [15.0, 0.1, 1.0, 0]
+            starting_velocity = [15.0, 0.0, 0.0]
+            starting_steering_angle = [0.0]
+        else:
+            starting_pose = starting_state[:4]
+            starting_velocity = starting_state[4:7]
+            starting_steering_angle = starting_state[7]
+        if starting_lap is None:
+            starting_lap = 0
 
         self.pose = np.array(starting_pose)
         self.vel = np.array(starting_velocity)
@@ -105,6 +131,12 @@ class Simulator:
 
         self.dynamics = Dynamics(self.dt)
         print("Simulator created!")
+
+        self.figures = figures
+
+        if figures:
+            self.steering_ax = plt.figure().get_axes()[0]
+            plt.figure()
 
     @property
     def full_state(self):
@@ -124,26 +156,49 @@ class Simulator:
         self.vel = new_state[4:7]
         self.steering = new_state[7]
 
-    def step(self):
+    def get_waypoints(self):
         x = self.pose[0]
         y = self.pose[1]
         heading = np.arctan2(self.pose[3], self.pose[2])
         lap = self.lap
+        # print(self.full_state)
+        return self.waypoint_generator.request_waypoints(x, y, heading, lap)
 
-        waypoints, speeds, progress, heading_derotation = (
-            self.waypoint_generator.request_waypoints(x, y, heading, lap)
-        )
-        print(speeds)
-        status, trajectory = self.MPC_controller.optimize(
+    def step(self):
+        plt.clf()
+
+        waypoints, speeds, progress, heading_derotation = self.get_waypoints()
+
+        # plotting.plot_path_and_heading(waypoints)
+        # plt.draw()
+        # print(speeds)
+        status, trajectory, inputs = self.MPC_controller.optimize(
             self.red_state, waypoints, speeds
         )
-        input = trajectory[0, 6]
+        steer = trajectory[1, 6]
 
-        new_state = self.dynamics.rk4_integraton(self.full_state, input)
+        steer = inputs[0]
+        # inputs = np.append(inputs, [0])
+        print("steer: ", steer)
+
+        new_state = self.dynamics.rk4_integraton(self.full_state, steer)
 
         self.lapcounter(new_state[0])
+        self.full_state = new_state
         self.planned_references = waypoints
         self.planned_trajectory = trajectory
+
+        # # THIS INCLUDES THE STEERING RATE AS WELL
+        # self.planned_trajectory = np.concatenate(
+        #     [trajectory, inputs.reshape([-1, 1])], axis=1
+        # )
+
+        plotting.plot_path_and_heading(self.planned_trajectory, self.planned_references)
+
+        # t = np.linspace(0, Tf, N + 1)
+        # plotting.plot_steering(simulator.planned_trajectory[:, :7], inputs, t)
+        plt.draw()
+        plt.show(block=False)
 
     def dynamics_step(self, input):
         new_state = self.dynamics.rk4_integraton(self.full_state, input)
@@ -165,27 +220,37 @@ class Simulator:
 
 
 if __name__ == "__main__":
-    N = 75
+    N = 25
     Tf = 0.5
-    acados_print_level = 1
-
+    acados_print_level = 2
+    # starting_state = [
+    #     5.0,
+    #     0.1,
+    #     1.0,
+    #     0,
+    # ]ng_state[7]
     simulator = Simulator(N, Tf, acados_print_level)
-    simulator.step()
-    plotting.plot_directions(simulator.planned_trajectory, simulator.planned_references)
-    plt.show()
-    # simulator.test_pathplanning()
-
-    # history = [simulator.full_state]
-    # for i in range(200):
-    #     if i < 10:
-    #         input = 0.4
-    #     else:
-    #         input = 0.0
-    #
-    #     simulator.dynamics_step(input)
-    #     history.append(simulator.full_state)
-    #     print(i)
-    # history = np.array(history)
-    # print(history)
-    # plotting.plot_path_and_heading(history)
+    # simulator.step()
+    # simulator.step()
+    # print(simulator.planned_trajectory)
+    # plotting.plot_directions(simulator.planned_trajectory, simulator.planned_references)
     # plt.show()
+    # t = np.linspace(0, Tf, N + 1)
+    # plotting.plot_steering(
+    #     simulator.planned_trajectory[:, :6], simulator.planned_trajectory[:, 7], t
+    # )
+    # plt.show()
+    # simulator.test_pathplanning()
+    plt.ion()
+    history = [simulator.full_state]
+    for i in range(1000):
+        input("do a button press to optimize")
+        # print(simulator.full_state)
+        simulator.step()
+        # print(simulator.planned_references)
+        history.append(simulator.full_state)
+        plt.show()
+    history = np.array(history)
+    print(history)
+    # plotting.plot_path_and_heading(history)
+    plt.show()
