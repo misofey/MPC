@@ -178,8 +178,10 @@ class Simulator:
         # plotting.plot_path_and_heading(waypoints)
         # plt.draw()
         # print(speeds)
+        disturbance = np.random.normal(0, 0.1, size=self.red_state.shape)
+        disturbed_state = self.red_state + disturbance
         status, trajectory, inputs = self.MPC_controller.optimize(
-            self.red_state, waypoints, speeds
+            disturbed_state, waypoints, speeds
         )
         steer = trajectory[1, 6]
 
