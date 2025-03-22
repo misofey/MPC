@@ -5,7 +5,7 @@ import numpy as np
 
 class NLOcp(AcadosOcp):
     def __init__(self, N, Tf):
-        AcadosOcp.__init__()
+        AcadosOcp.__init__(self)
 
         ### Constants ###
         # Simulation constants
@@ -36,12 +36,12 @@ class NLOcp(AcadosOcp):
         self.model.name = "NonlinearDynamicBycicleModel"
 
         ### Decision variables ###
-        self.model.u = cs.MX.sym(self.n_inputs, 1)
-        self.model.x = cs.MX.sym(self.n_states, 1)
-        self.model.xdot = cs.MX.sym(self.n_states, 1)
+        self.model.u = cs.MX.sym("u", self.n_inputs, 1)
+        self.model.x = cs.MX.sym("x", self.n_states, 1)
+        self.model.xdot = cs.MX.sym("xdot", self.n_states, 1)
 
         ### Parameters ###
-        self.model.p = cs.MX.sym(1, 1)
+        self.model.p = cs.MX.sym("p", 1, 1)
 
         # Set model dynamics
         self.set_dynamics()
@@ -84,11 +84,11 @@ class NLOcp(AcadosOcp):
         d_cos_heading = -sin_heading * r
         d_sin_heading = cos_heading * r
 
-        d_v_y = -(self.Cf * self.Cr) * v_y
-        d_v_y += (-v_x + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * v_x)) * r
-        d_v_y -= self.Cf * self.m * wheel_angle
+        d_v_y = -(self.Cf * self.Cr) / (self.m * v_x) * v_y
+        d_v_y += (-v_x + (self.Cr * self.lr - self.Cf * self.lf)) / (self.m * v_x) * r
+        d_v_y -= self.Cf / self.m * wheel_angle
 
-        d_r = (self.lr * self.Cr - self.lf * self.Cf) / self.I_z * v_y
+        d_r = (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x) * v_y
         d_r += (
             -(self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
             / (self.I_z * v_x)
@@ -119,8 +119,8 @@ class NLOcp(AcadosOcp):
         self.constraints.idxbu = np.array(
             [0]
         )  # the 0th input has the constraints, so J_bu = [1]
-        self.constraints.lbu = np.array([-self.max_steering])
-        self.constraints.ubu = np.array([self.max_steering])
+        self.constraints.lbu = np.array([-self.max_steering_rate])
+        self.constraints.ubu = np.array([self.max_steering_rate])
 
     def set_cost(self) -> None:
 
@@ -128,19 +128,19 @@ class NLOcp(AcadosOcp):
         Vx = np.eye(self.n_outputs, self.n_states)
         Vx[[(4, 4), (5, 5)]] = 0
         Vx[4, 6] = 1
+
         self.cost.Vx_e = Vx
         self.cost.Vx = Vx
 
         Vu = np.array([[0], [0], [0], [0], [0], [1]])
         self.cost.Vu = Vu
-        self.cost.Vu_e = Vu
 
         self.cost.cost_type = "LINEAR_LS"
         self.cost.cost_type_e = "LINEAR_LS"
 
         # Cost matrices
-        self.cost.W = np.array([1.0, 1.0, 1e-3, 1e-1, 0, 1e-5, 0.0]) * 0.1
-        self.cost.W_e = np.array([1, 1, 0.7, 0.7, 0, 0, 0]) * 0.01
+        self.cost.W = np.diag([0, 0, 0, 0, 1e-5, 1e-5]) / self.N
+        self.cost.W_e = np.diag([1, 1, 0, 0, 0, 0]) / self.N * 1e-10
 
         # Reference trajectory
         self.cost.yref = np.array([0, 0, 1, 0, 0, 0])
@@ -151,13 +151,13 @@ class NLOcp(AcadosOcp):
 
 
 class NLSolver(AcadosOcpSolver):
-    def __init__(self, ocp: NLOcp):
+    def __init__(self, ocp: NLOcp, acados_print_level):
         # Set solver options in OCP
         self.ocp = ocp
-        self.set_solver_options(self.ocp)
+        self.set_solver_options(self.ocp, acados_print_level)
         super().__init__(self.ocp)
 
-    def set_solver_options(self, ocp: NLOcp) -> None:
+    def set_solver_options(self, ocp: NLOcp, acados_print_level=0) -> None:
         # set QP solver and integration
         ocp.solver_options.tf = ocp.Tf
         ocp.solver_options.N_horizon = ocp.N
@@ -168,16 +168,24 @@ class NLSolver(AcadosOcpSolver):
         ocp.solver_options.integrator_type = "ERK"
 
         ocp.solver_options.nlp_solver_max_iter = 200
-        ocp.solver_options.tol = 1e-4
+        ocp.solver_options.tol = 1e-2
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
-        ocp.solver_options.print_level = 0
-        ocp.solver_options.nlp_solver_exact_hessian = True
+        ocp.solver_options.print_level = acados_print_level
+        # ocp.solver_options.nlp_solver_exact_hessian = True
         ocp.solver_options.qp_solver_warm_start = 0
 
-    def solve_problem(self, x0, ref_points, p):
+    def waypoints_to_references(self, waypoints):
+        references = np.zeros([self.ocp.N, self.ocp.n_outputs])
+        references[:, :4] = waypoints[1:, :]
+        return references
+
+    def optimize(self, x0, waypoints, p):
+        print("x0: ", x0)
         self.set(0, "lbx", x0)
         self.set(0, "ubx", x0)
+
+        ref_points = self.waypoints_to_references(waypoints)
 
         for i in range(self.ocp.N):
             self.cost_set(i, "y_ref", ref_points[i, :])
@@ -186,4 +194,4 @@ class NLSolver(AcadosOcpSolver):
         status = self.solve()
         trajectory = self.get_flat("x")
 
-        return status, trajectory
+        return status, trajectory.reshape(-1, self.ocp.n_states)
