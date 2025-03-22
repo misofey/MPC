@@ -4,7 +4,7 @@ import casadi as cs
 import numpy as np
 
 
-class NLOcp(AcadosOcp):
+class LOcp(AcadosOcp):
     def __init__(self, N, Tf):
         AcadosOcp.__init__(self)
 
@@ -25,8 +25,8 @@ class NLOcp(AcadosOcp):
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = 0.4
-        self.max_steering_rate = 500 * (
+        self.max_steering = 0.8
+        self.max_steering_rate = (
             2 * self.max_steering
         )  # one second from full left to full right
 
@@ -69,37 +69,41 @@ class NLOcp(AcadosOcp):
         )
         C_data_x = [300, 500, 700, 900]
 
-        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y) * 2
-        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y) * 2
+        Cf = np.interp((9.81 * self.m / 2) * (1 - self.x_cg), C_data_x, C_data_y)
+        Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y)
 
         return Cf, Cr
 
     def set_dynamics(self) -> None:
-        p_x = self.model.x[0]
-        p_y = self.model.x[1]
-        cos_heading = self.model.x[2]
-        sin_heading = self.model.x[3]
-        v_y = self.model.x[4]
-        v_x = self.model.p[0]
-        r = self.model.x[5]
-        wheel_angle = self.model.x[6]
+        p_x = self.model.x[0, 0]
+        p_y = self.model.x[1, 0]
+        cos_heading = self.model.x[2, 0]
+        sin_heading = self.model.x[3, 0]
+        v_x = self.model.p[0, 0]
+        v_y = self.model.x[4, 0]
+        r = self.model.x[5, 0]
+        wheel_angle = self.model.x[6, 0]
 
-        steering_rate = self.model.u[0]
+        steering_rate = self.model.u[0, 0]
 
+        # d_p_x = v_x * cos_heading - v_y * sin_heading
         d_p_x = v_x * cos_heading - v_y * sin_heading
+
         d_p_y = v_x * sin_heading + v_y * cos_heading
 
         d_cos_heading = -sin_heading * r
         d_sin_heading = cos_heading * r
 
-        d_v_y = -(self.Cf * self.Cr) * v_y
-        d_v_y += (-v_x + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * v_x)) * r
-        d_v_y -= self.Cf * self.m * wheel_angle
+        d_v_y = -(self.Cf + self.Cr) / (self.m * v_x + 0.1) * v_y
+        d_v_y += (
+            (-v_x + (self.Cr * self.lr - self.Cf * self.lf)) / (self.m * v_x + 0.1) * r
+        )
+        d_v_y -= self.Cf / self.m * wheel_angle
 
-        d_r = (self.lr * self.Cr - self.lf * self.Cf) / self.I_z * v_y
+        d_r = (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x + 0.1) * v_y
         d_r += (
             -(self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
-            / (self.I_z * v_x)
+            / (self.I_z * v_x + 0.1)
             * r
         )
         d_r -= self.lf * self.Cf / self.I_z * wheel_angle
@@ -110,37 +114,39 @@ class NLOcp(AcadosOcp):
             d_p_x, d_p_y, d_cos_heading, d_sin_heading, d_v_y, d_r, d_steering
         )
 
-        ##f = cs.Function("f", [self.model.x, self.model.u, self.model.p], [f])
-        #A = cs.jacobian(f, self.model.x)
-        #A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
-        #A = A(self.x_lin_point, self.u_lin_point, self.p_lin_point)
-        #B = cs.jacobian(f, self.model.u)
-        #B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
-        #B = B(self.u_lin_point, self.u_lin_point, self.p_lin_point) 
-#
-        #self.model.f_expl_expr = A @ self.model.x + B @ self.model.u
-        #self.model.f_impl_expr = self.model.xdot - (A @ self.model.x + B @ self.model.u)
-        self.model.f_expl_expr = f
-        self.model.f_impl_expr = self.model.xdot - f
+        A = cs.jacobian(f, self.model.x)
+        A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
+        A = A(self.x_lin_point, self.u_lin_point, self.model.p)
+        B = cs.jacobian(f, self.model.u)
+        B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
+        B = B(self.u_lin_point, self.u_lin_point, self.model.p) 
 
-        self.model.con_h_expr = sin_heading * sin_heading + cos_heading * cos_heading - 1
-        self.constraints.lh = np.array([0])
-        self.constraints.uh = np.array([0])
+        self.model.f_expl_expr = A @ self.model.x + B @ self.model.u
+        self.model.f_impl_expr = self.model.xdot - (A @ self.model.x + B @ self.model.u)
+        #self.model.f_expl_expr = f
+        #self.model.f_impl_expr = self.model.xdot - f
+
+        #self.model.con_h_expr = sin_heading * sin_heading + cos_heading * cos_heading - 1
+        #self.constraints.lh = np.array([0])
+        #self.constraints.uh = np.array([0])
 
     def set_constraints(self) -> None:
-
-        # Intial condition
-        self.constraints.x0 = np.array([0, 0, np.pi/4, 0, 0, 0, 0])
-
         # Bounds for self.model.x
         self.constraints.idxbx = np.array([6])
         self.constraints.lbx = np.array([-self.max_steering])
         self.constraints.ubx = np.array([self.max_steering])
 
+        # Intial condition
+        self.constraints.idxbx_0 = np.array([0, 1, 2, 3, 4, 5, 6])
+        self.constraints.lbx_0 = np.array([0, 0, 1, 0, 0, 0, 0])
+        self.constraints.ubx_0 = np.array([0, 0, 1, 0, 0, 0, 0])
+
         # Bounds for input
-        self.constraints.idxbu = np.array([0])  # the 0th input has the constraints, so J_bu = [1]
-        self.constraints.lbu = np.array([-self.max_steering])
-        self.constraints.ubu = np.array([self.max_steering])
+        self.constraints.idxbu = np.array(
+            [0]
+        )  # the 0th input has the constraints, so J_bu = [1]
+        self.constraints.lbu = np.array([-self.max_steering_rate])
+        self.constraints.ubu = np.array([self.max_steering_rate])
 
     def set_cost(self) -> None:
 
@@ -148,6 +154,7 @@ class NLOcp(AcadosOcp):
         Vx = np.eye(self.n_outputs, self.n_states)
         Vx[[(4, 4), (5, 5)]] = 0
         Vx[4, 6] = 1
+        
         self.cost.Vx_e = Vx
         self.cost.Vx = Vx
 
@@ -160,15 +167,15 @@ class NLOcp(AcadosOcp):
 
         # Cost matrices
         #TODO I deleted the last term why was it there?
-        self.cost.W = np.diag([1.0, 1.0, 1e-3, 1e-1, 0, 1e-5]) * 0.1**10
-        self.cost.W_e = np.diag([1, 1, 0.7, 0.7, 0, 0]) * 0.01**10
+        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-4, 1e-1]) * 0.05
+        self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e-5, 0.7e-5, 1e-2, 0]) * 0.1
 
         # Reference trajectory
         self.cost.yref = np.array([0, 0, 1, 0, 0, 0])
         self.cost.yref_e = np.array([0, 0, 1, 0, 0, 0])
 
         # Initial parameter trajectory
-        self.parameter_values = np.array([7.0])
+        self.parameter_values = np.array([9.0])
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -179,28 +186,56 @@ class NLOcp(AcadosOcp):
         self.solver_options.nlp_solver_type = "SQP"
         self.solver_options.hessian_approx = "EXACT"
         self.solver_options.integrator_type = "ERK"
+        self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
         self.solver_options.tol = 1e-4
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
         self.solver_options.print_level = 3
-        self.solver_options.nlp_solver_exact_hessian = True
+         # ocp.solver_options.nlp_solver_exact_hessian = True
         self.solver_options.qp_solver_warm_start = 0
+        self.solver_options.regularize_method = "MIRROR"
 
-    def solve_problem(self, x0, ref_points, p):
-        self.solver.set(0, "lbx", x0)
-        self.solver.set(0, "ubx", x0)
+    def waypoints_to_references(self, waypoints):
+        references = np.zeros([self.N, self.n_outputs])
+        references[:, :4] = waypoints[1:, :]
+        return references
+
+    def optimize(self, x0, waypoints, p):
+        # print("x0: ", x0)
+        starting_state = np.array([0, 0, 1, 0, x0[4], x0[5], x0[6]])
+        ref_points = self.waypoints_to_references(waypoints)
+        # print(ref_points)
 
         for i in range(self.N):
-            self.solver.cost_set(i, "y_ref", ref_points[i, :])
-            # Set speed
-            self.solver.set(i, "p", p)
+            self.solver.cost_set(i, "yref", ref_points[i, :])
+            self.solver.set(i, "p", p[i])
+        self.p_lin_point = np.array([p[0]])
 
-        status = self.solver.solve()
-        trajectory = self.solver.get_flat("x").reshape((self.n_states, -1))
+        # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
+        # self.set(0, "lbx", starting_state)
+        # self.set(0, "ubx", starting_state)
+        #
+        # status = self.solve()
+        # trajectory = self.get_flat("x")
+        # inputs = self.get_flat("u")
 
-        return status, trajectory
+        u0 = self.solver.solve_for_x0(starting_state)
+        print(u0)
+
+        # fish out the results from the solver
+        trajectory = np.zeros([self.N + 1, self.n_states])
+        inputs = np.zeros([self.N, self.n_inputs])
+        for i in range(self.N):
+            trajectory[i, :] = self.solver.get(i, "x")
+            inputs[i, :] = self.solver.get(i, "u")
+        trajectory[self.N, :] = self.solver.get(self.N, "x")
+        print(inputs[:15])
+        print(trajectory[:15, -1])
+
+        status = 0
+        return status, trajectory, inputs
 
     
 if __name__ == "__main__":
