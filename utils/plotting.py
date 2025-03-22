@@ -18,44 +18,24 @@ def plot_path_and_heading(data, ref=None):
 
 def plot_directions(x, ref=None):
     t = np.arange(0, x.shape[0])
-    plt.quiver(
+    plt.scatter(
         x[:, 0],
         x[:, 1],
-        x[:, 2],
-        x[:, 3],
-        t,
-        label="position",
-        angles="xy",
-        scale_units="xy",
-        scale=30,
-        cmap="turbo",
+        label="position"
     )
     if ref is not None:
         t = np.arange(0, ref.shape[0])
-        plt.quiver(
+        plt.scatter(
             ref[:, 0],
             ref[:, 1],
-            ref[:, 2],
-            ref[:, 3],
-            t,
-            label="reference",
-            angles="xy",
-            scale_units="xy",
-            scale=30,
-            cmap="brg",
+            label="reference"
         )
     plt.legend()
-    ax = plt.gca()
-    ax.set_aspect("equal")
-    xmin = np.min(x[:, 0]) - 1
-    xmax = np.max(x[:, 0]) + 1
-    ymin = np.min(x[:, 1]) - 1
-    ymax = np.max(x[:, 1]) + 1
-    plt.xlim([xmin, xmax])
-    plt.ylim([ymin, ymax])
-
-
-def plot_steering(x, u, t):
-    plt.plot(t, x[:, 6], label="wheel angle")
-    plt.plot(t[:-1], u, label="steering rate")
-    plt.legend()
+    #ax = plt.gca()
+    #ax.set_aspect("equal")
+    #xmin = np.min(x[:, 0]) - 1
+    #xmax = np.max(x[:, 0]) + 1
+    #ymin = np.min(x[:, 1]) - 1
+    #ymax = np.max(x[:, 1]) + 1
+    plt.xlim([0, 30])
+    plt.ylim([-15, 15])

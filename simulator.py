@@ -195,6 +195,8 @@ class Simulator:
         self.full_state = new_state
         self.planned_references = waypoints
         self.planned_trajectory = trajectory
+        trig_viol = np.linalg.norm(self.planned_trajectory[:, 2:4], axis=1)-1
+        print(f"Trigonometric const violation: {trig_viol}")
 
         # # THIS INCLUDES THE STEERING RATE AS WELL
         # self.planned_trajectory = np.concatenate(
