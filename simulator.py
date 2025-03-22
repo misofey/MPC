@@ -22,6 +22,7 @@
 
 from NLMPC import NLSolver, NLOcp
 from LMPC import LOcp
+from LPVMPC import LPVOcp
 
 
 import matplotlib.pyplot as plt
@@ -100,16 +101,19 @@ class Simulator:
         starting_state=None,
         starting_lap=None,
         figures=False,
-        nonlin=False
+        model="LPV"
     ):
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
-        if nonlin:
+        if model == "NL":
             self.ocp = NLOcp(self.N, self.Tf)
             self.MPC_controller = NLSolver(self.ocp, acados_print_level)
-        else:
+        elif model == "L":
             self.ocp = LOcp(self.N, self.Tf)
+            self.MPC_controller = self.ocp
+        elif model == "LPV":
+            self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
 
         if starting_state is None:
