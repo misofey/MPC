@@ -119,7 +119,7 @@ class LOcp(AcadosOcp):
         A = A(self.x_lin_point, self.u_lin_point, self.model.p)
         B = cs.jacobian(f, self.model.u)
         B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
-        B = B(self.u_lin_point, self.u_lin_point, self.model.p) 
+        B = B(self.x_lin_point, self.u_lin_point, self.model.p) 
 
         self.model.f_expl_expr = A @ self.model.x + B @ self.model.u
         self.model.f_impl_expr = self.model.xdot - (A @ self.model.x + B @ self.model.u)
