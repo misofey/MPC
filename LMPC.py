@@ -2,6 +2,8 @@ from matplotlib import pyplot as plt
 from acados_template import AcadosOcp, AcadosModel, AcadosOcpSolver
 import casadi as cs
 import numpy as np
+import control as ct
+import sympy as sp
 
 
 class LOcp(AcadosOcp):
@@ -31,9 +33,9 @@ class LOcp(AcadosOcp):
         )  # one second from full left to full right
 
         # Linearization point
-        self.x_lin_point = np.array([0, 0, 1, 0, 0, 0, 0])
+        self.x_lin_point = np.array([0, 0, 1, 0.1, 0.1, 0.1, 0.1])
         self.u_lin_point = np.array([0])
-        self.p_lin_point = np.array([7.0])
+        self.p_lin_point = np.array([9.0])
         # Model setup
         self.model = AcadosModel()
 
@@ -56,7 +58,7 @@ class LOcp(AcadosOcp):
         self.set_cost()
         # Set solver options
         self.set_solver_options()
-        self.solver = AcadosOcpSolver(self)
+        #self.solver = AcadosOcpSolver(self)
 
     def get_tyre_stiffness(self) -> tuple[float, float]:
         C_data_y = np.array(
@@ -86,7 +88,6 @@ class LOcp(AcadosOcp):
 
         steering_rate = self.model.u[0, 0]
 
-        # d_p_x = v_x * cos_heading - v_y * sin_heading
         d_p_x = v_x * cos_heading - v_y * sin_heading
 
         d_p_y = v_x * sin_heading + v_y * cos_heading
@@ -110,19 +111,19 @@ class LOcp(AcadosOcp):
 
         d_steering = steering_rate
 
-        f = cs.vertcat(
+        self.f = cs.vertcat(
             d_p_x, d_p_y, d_cos_heading, d_sin_heading, d_v_y, d_r, d_steering
         )
 
-        A = cs.jacobian(f, self.model.x)
-        A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
-        A = A(self.x_lin_point, self.u_lin_point, self.model.p)
-        B = cs.jacobian(f, self.model.u)
-        B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
-        B = B(self.x_lin_point, self.u_lin_point, self.model.p) 
+        self.A = cs.jacobian(self.f, self.model.x)
+        self.A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
+        self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
+        self.B = cs.jacobian(self.f, self.model.u)
+        self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
+        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
 
-        self.model.f_expl_expr = A @ self.model.x + B @ self.model.u
-        self.model.f_impl_expr = self.model.xdot - (A @ self.model.x + B @ self.model.u)
+        self.model.f_expl_expr = self.A @ self.model.x + self.B @ self.model.u
+        self.model.f_impl_expr = self.model.xdot - (self.A @ self.model.x + self.B @ self.model.u)
         #self.model.f_expl_expr = f
         #self.model.f_impl_expr = self.model.xdot - f
 
@@ -167,7 +168,7 @@ class LOcp(AcadosOcp):
 
         # Cost matrices
         #TODO I deleted the last term why was it there?
-        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-4, 1e-1]) * 0.05
+        self.cost.W = np.diag([1e0, 1e0, 1, 1, 1, 1])
         self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e-5, 0.7e-5, 1e-2, 0]) * 0.1
 
         # Reference trajectory
@@ -237,15 +238,75 @@ class LOcp(AcadosOcp):
         status = 0
         return status, trajectory, inputs
 
-    
+    def stability(self):
+
+        ctablility = ct.InputOutputSystem()
+        A = cs.jacobian(self.f, self.model.x)
+        A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
+        A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+        B = cs.jacobian(self.f, self.model.u)
+        B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
+        B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+
+        W = self.cost.W
+        Q = np.array([
+            [W[0, 0], 0, 0, 0, 0, 0, 0],
+            [0, W[1, 1], 0, 0, 0, 0, 0],
+            [0, 0, W[2, 2], 0, 0, 0, 0],
+            [0, 0, 0, W[3, 3], 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, W[4, 4]]
+        ])
+        R = self.cost.W[5, 5]*3
+
+        controllable = np.linalg.matrix_rank(ct.ctrb(A, B)) == A.shape[0]
+        tmp = np.linalg.matrix_rank(ct.ctrb(A.T, Q)) == A.shape[0]
+        # find Q such that modes on im axis are controllable
+        eigenvalues = np.linalg.eigvals(A)
+
+        first_nonzero_index = lambda array: np.flatnonzero(array)[0] if np.any(array) else -1
+        
+        pivot_indeces = np.apply_along_axis(first_nonzero_index, axis=1, arr=ct.ctrb(A, B))
+        print(f"Pivot indeces: {sp.Matrix(ct.ctrb(A, B)).rref()}")
+        print(eigenvalues)
+        print(f'System is controllable: {controllable}')
+        print(f"Controllability of (A.T, Q): {tmp}")
+        print(f"Solution to ARE exists: {tmp&controllable}")
+
+        ### TERMINAL COST ###
+        # STEP 1: Obtain terminal cost for (non reference tracking) quadratic cost
+        #         using the solution of ricatty equation
+        if tmp & controllable:
+            K, P, E = ct.lqr(A, B, Q, R)
+        else:
+            print("Not attempting to solve ARE, using fake K matrix")
+            K = np.ones((self.n_inputs, self.n_states))
+            P = np.eye(self.n_states)
+            E = np.zeros(self.n_states)
+        
+        t_set_problem = cs.Opti()
+        x_sym = t_set_problem.variable(self.n_states)
+        t_set_problem.minimize(1/2*x_sym.T@P@x_sym)
+        t_set_problem.subject_to(K@x_sym<1.5)
+        p_opts = {"expand":True}
+        s_opts = {"max_iter": 100, "tol": 10e-16}
+        t_set_problem.solver("ipopt",p_opts,s_opts)
+        solution = t_set_problem.solve()
+        state_traj = solution.value(x_sym)
+        print(1/2*state_traj.T@P@state_traj)
+        
+
+
 if __name__ == "__main__":
     N = 100
     Tf = 0.5
-    ocp = NLOcp(N, Tf)
-    x0 = np.array([0, 0, 1, 0, 0, 0, 0])
-    ref_points = np.ones((N, 6))*0.01
-    p = np.array([1.0])
-    status, trajectory = ocp.solve_problem(x0, ref_points, p)
-    print(status)
-    plt.plot(trajectory[0, :], trajectory[1, :])
-    plt.show()
+    ocp = LOcp(N, Tf)
+    ocp.stability()
+    #x0 = np.array([0, 0, 1, 0, 0, 0, 0])
+    #ref_points = np.ones((N, 6))*0.01
+    #p = np.array([1.0])
+    #status, trajectory = ocp.solve_problem(x0, ref_points, p)
+    #print(status)
+    #plt.plot(trajectory[0, :], trajectory[1, :])
+    #plt.show()
