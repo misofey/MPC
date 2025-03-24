@@ -287,10 +287,11 @@ class LOcp(AcadosOcp):
         
         t_set_problem = cs.Opti()
         x_sym = t_set_problem.variable(self.n_states)
-        t_set_problem.minimize(1/2*x_sym.T@P@x_sym)
-        t_set_problem.subject_to(K@x_sym<1.5)
+        t_set_problem.minimize(-1/2*x_sym.T@P@x_sym)
+        t_set_problem.subject_to(K@x_sym<self.max_steering_rate)
+        t_set_problem.subject_to(K@x_sym>-self.max_steering_rate)
         p_opts = {"expand":True}
-        s_opts = {"max_iter": 100, "tol": 10e-16}
+        s_opts = {"max_iter": 500, "tol": 10e-16}
         t_set_problem.solver("ipopt",p_opts,s_opts)
         solution = t_set_problem.solve()
         state_traj = solution.value(x_sym)
