@@ -9,7 +9,7 @@ from pprint import pprint as pr
 
 class LOcp(AcadosOcp):
 
-    def __init__(self, N:int, Tf:float, discrete:bool = True, stability:bool = True):
+    def __init__(self, N:int, Tf:float, discrete:bool = True, stability:bool = False):
         AcadosOcp.__init__(self)
 
         ### Constants ###
@@ -66,7 +66,10 @@ class LOcp(AcadosOcp):
         self.set_cost()
         # Set solver options
         self.set_solver_options()
-        if not stability:
+        if stability:
+            self.stability()
+            return
+        else:
             self.solver = AcadosOcpSolver(self)
 
 
@@ -135,12 +138,12 @@ class LOcp(AcadosOcp):
         self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
 
 
-    def set_discrete_dynamics(self, type:str = "rk4") -> None:
+    def set_discrete_dynamics(self, type:str = "fe") -> None:
         
         if type == "rk4":
             self.apply_rk4_with_linearized_matrices()
         elif type == "fe":
-            self.model.disc_dyn_expr = (self.A @ (self.model.x) + self.B @ (self.model.u)) * self.Tf/self.N
+            self.model.disc_dyn_expr = self.model.x + (self.A @ (self.model.x-self.x_lin_point) + self.B @ (self.model.u-self.u_lin_point) + self.x_lin_point) * self.Tf/self.N 
     
 
     def apply_rk4_with_linearized_matrices(self):
@@ -149,7 +152,7 @@ class LOcp(AcadosOcp):
 
         # TODO: The linearization point should be from x and u 
         # idk why it works like this but not like that
-        x_dot = lambda x, u: self.A @ (x) + self.B @ (u) 
+        x_dot = lambda x, u: self.A @ (x-self.x_lin_point) + self.B @ (u-self.u_lin_point) - self.x_lin_point
 
         # Compute RK4 steps using linearized system
         k1 = x_dot(self.model.x, self.model.u)
@@ -250,7 +253,7 @@ class LOcp(AcadosOcp):
         self.solver_options.regularize_method = "MIRROR"
 
 
-    def waypoints_to_references(self, waypoints):
+    def waypoints_to_references(self, waypoints:np.ndarray) -> np.ndarray:
         references = np.zeros([self.N, self.n_outputs])
         references[:, :4] = waypoints[1:, :]
         return references
@@ -293,6 +296,7 @@ class LOcp(AcadosOcp):
 
 
     def stability(self):
+        np.set_printoptions(precision=1)
         if self.discrete:
             # This uses the specified discretization so either Runge Kutta 4 or Forward Euler
             A = cs.jacobian(self.model.disc_dyn_expr, self.model.x)
@@ -303,16 +307,23 @@ class LOcp(AcadosOcp):
             B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
         else:
             # This method uses Forward Euler discretization
-            ctablility = ct.InputOutputSystem()
             A = cs.jacobian(self.f, self.model.x)
-            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
-            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)*self.Tf/self.N
-            print(f"State matrix: {A}")
             B = cs.jacobian(self.f, self.model.u)
+            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
             B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)*self.Tf/self.N
-            print(f"Input matric:{B}")
+            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+            C = np.zeros((self.n_outputs, self.n_states))
+            D = np.zeros((self.n_outputs, self.n_inputs))
+            dsys = ct.ss(A, B, C, D, self.Tf/self.N)
+            dsys = ct.sample_system(dsys, self.Tf/self.N)
+        
+        print(f"Cont state matrix:\n {A}")
+        print(f"Discrete state matrix:\n {dsys.A}")     
+        print(f"Cont input matric:\n {B}")
+        print(f"Discrete input matric:\n {dsys.B}")
 
+        # Get Q and R matrices from W matrix
         W = self.cost.W
         Q = np.array([
             [W[0, 0], 0, 0, 0, 0, 0, 0],
@@ -325,7 +336,8 @@ class LOcp(AcadosOcp):
         ])
         R = self.cost.W[5, 5]
 
-        controllable = np.linalg.matrix_rank(ct.ctrb(A, B)) == A.shape[0]
+        # Check Conditions for existance of ARE solutio
+        controllable = np.linalg.matrix_rank(ct.ctrb(dsys.A, dsys.B)) == A.shape[0]
         tmp = np.linalg.matrix_rank(ct.ctrb(A.T, Q)) == A.shape[0]
         # find Q such that modes on im axis are controllable
         eigenvalues = np.linalg.eigvals(A)
@@ -333,8 +345,8 @@ class LOcp(AcadosOcp):
         first_nonzero_index = lambda array: np.flatnonzero(array)[0] if np.any(array) else -1
         
         pivot_indeces = np.apply_along_axis(first_nonzero_index, axis=1, arr=ct.ctrb(A, B))
-        print(f"Pivot indeces: {sp.Matrix(ct.ctrb(A, B)).rref()}")
-        print(eigenvalues)
+        print(f"Controllability matrix: \n {sp.Matrix(ct.ctrb(dsys.A, dsys.B)).rref()}")
+        print(f"Eigenvalues: {eigenvalues}")
         print(f'System is controllable: {controllable}')
         print(f'System is stabilizable: ')
         print(f"Controllability of (A.T, Q): {tmp}".format())
@@ -342,7 +354,7 @@ class LOcp(AcadosOcp):
 
         ### TERMINAL COST ###
         # STEP 1: Obtain terminal cost for (non reference tracking) quadratic cost
-        #         using the solution of ricatty equation
+        #         using the solution of ARE
         if tmp & True:
             K, P, E = ct.dlqr(A, B, Q, R)
         else:
@@ -351,6 +363,7 @@ class LOcp(AcadosOcp):
 
         pr(f"Solution of ARE: {P}")
         
+        # Try to find the maximum size set for terminal set while satisfying input constrints
         t_set_problem = cs.Opti()
         x_sym = t_set_problem.variable(self.n_states)
         t_set_problem.minimize(-1/2*x_sym.T@P@x_sym)
@@ -361,19 +374,12 @@ class LOcp(AcadosOcp):
         t_set_problem.solver("ipopt",p_opts,s_opts)
         solution = t_set_problem.solve()
         state_traj = solution.value(x_sym)
-        print(1/2*state_traj.T@P@state_traj)
+        print(f"Value of c: {1/2*state_traj.T@P@state_traj}")
         
 
 
 if __name__ == "__main__":
-    N = 100
-    Tf = 0.5
+    N = 50
+    Tf = 1
     ocp = LOcp(N, Tf)
     ocp.stability()
-    #x0 = np.array([0, 0, 1, 0, 0, 0, 0])
-    #ref_points = np.ones((N, 6))*0.01
-    #p = np.array([1.0])
-    #status, trajectory = ocp.solve_problem(x0, ref_points, p)
-    #print(status)
-    #plt.plot(trajectory[0, :], trajectory[1, :])
-    #plt.show()
