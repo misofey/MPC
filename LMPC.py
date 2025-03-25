@@ -4,13 +4,16 @@ import casadi as cs
 import numpy as np
 import control as ct
 import sympy as sp
+from pprint import pprint as pr
 
 
 class LOcp(AcadosOcp):
-    def __init__(self, N, Tf):
+
+    def __init__(self, N:int, Tf:float, discrete:bool = True, stability:bool = True):
         AcadosOcp.__init__(self)
 
         ### Constants ###
+        self.discrete = discrete
         # Simulation constants
         self.N = N
         self.Tf = Tf
@@ -33,7 +36,7 @@ class LOcp(AcadosOcp):
         )  # one second from full left to full right
 
         # Linearization point
-        self.x_lin_point = np.array([0, 0, 1, 0.1, 0.1, 0.1, 0.1])
+        self.x_lin_point = np.array([0, 0, 1, 0, 0, 0, 0])
         self.u_lin_point = np.array([0])
         self.p_lin_point = np.array([9.0])
         # Model setup
@@ -51,14 +54,21 @@ class LOcp(AcadosOcp):
         self.model.p = cs.MX.sym("p", 1)
 
         # Set model dynamics
-        self.set_dynamics()
+        self.get_dynamics()
+        if self.discrete:
+            print("Discrete dynamics is being used")
+            self.set_discrete_dynamics()
+        else:
+            self.set_cont_dynamics()
         # Set constraints
         self.set_constraints()
         # Set cost
         self.set_cost()
         # Set solver options
         self.set_solver_options()
-        #self.solver = AcadosOcpSolver(self)
+        if not stability:
+            self.solver = AcadosOcpSolver(self)
+
 
     def get_tyre_stiffness(self) -> tuple[float, float]:
         C_data_y = np.array(
@@ -76,7 +86,9 @@ class LOcp(AcadosOcp):
 
         return Cf, Cr
 
-    def set_dynamics(self) -> None:
+
+    def get_dynamics(self):
+
         p_x = self.model.x[0, 0]
         p_y = self.model.x[1, 0]
         cos_heading = self.model.x[2, 0]
@@ -122,14 +134,43 @@ class LOcp(AcadosOcp):
         self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
         self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
 
-        self.model.f_expl_expr = self.A @ self.model.x + self.B @ self.model.u
-        self.model.f_impl_expr = self.model.xdot - (self.A @ self.model.x + self.B @ self.model.u)
-        #self.model.f_expl_expr = f
-        #self.model.f_impl_expr = self.model.xdot - f
 
-        #self.model.con_h_expr = sin_heading * sin_heading + cos_heading * cos_heading - 1
-        #self.constraints.lh = np.array([0])
-        #self.constraints.uh = np.array([0])
+    def set_discrete_dynamics(self, type:str = "rk4") -> None:
+        
+        if type == "rk4":
+            self.apply_rk4_with_linearized_matrices()
+        elif type == "fe":
+            self.model.disc_dyn_expr = (self.A @ (self.model.x) + self.B @ (self.model.u)) * self.Tf/self.N
+    
+
+    def apply_rk4_with_linearized_matrices(self):
+        
+        dt = self.Tf / self.N # Time step
+
+        # TODO: The linearization point should be from x and u 
+        # idk why it works like this but not like that
+        x_dot = lambda x, u: self.A @ (x) + self.B @ (u) 
+
+        # Compute RK4 steps using linearized system
+        k1 = x_dot(self.model.x, self.model.u)
+        k2 = x_dot(self.model.x + (dt / 2) * k1, self.model.u)
+        k3 = x_dot(self.model.x + (dt / 2) * k2, self.model.u)
+        k4 = x_dot(self.model.x + dt * k3, self.model.u)
+    
+
+        # Compute the RK4 update step
+        x_next = self.model.x + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+        # Set the discretized dynamics
+        self.model.disc_dyn_expr = x_next
+    
+
+    def set_cont_dynamics(self) -> None:
+
+        # TODO: same comment as at the ddiscrete model
+        self.model.f_expl_expr = (self.A @ (self.model.x) + self.B @ (self.model.u))
+        self.model.f_impl_expr = self.model.xdot - (self.A @ (self.model.x - self.x_lin_point) + self.B @ (self.model.u - self.u_lin_point))
+
 
     def set_constraints(self) -> None:
         # Bounds for self.model.x
@@ -148,6 +189,7 @@ class LOcp(AcadosOcp):
         )  # the 0th input has the constraints, so J_bu = [1]
         self.constraints.lbu = np.array([-self.max_steering_rate])
         self.constraints.ubu = np.array([self.max_steering_rate])
+
 
     def set_cost(self) -> None:
 
@@ -168,7 +210,7 @@ class LOcp(AcadosOcp):
 
         # Cost matrices
         #TODO I deleted the last term why was it there?
-        self.cost.W = np.diag([1e0, 1e0, 1, 1, 1, 1])
+        self.cost.W = np.diag([1e0, 1e0, 1, 1, 1, 1]) * 100
         self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e-5, 0.7e-5, 1e-2, 0]) * 0.1
 
         # Reference trajectory
@@ -178,16 +220,25 @@ class LOcp(AcadosOcp):
         # Initial parameter trajectory
         self.parameter_values = np.array([9.0])
 
+
     def set_solver_options(self) -> None:
         # set QP solver and integration
+        self.dims.N = self.N
         self.solver_options.tf = self.Tf
         self.solver_options.N_horizon = self.N
-        # self.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES'
-        self.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        self.solver_options.nlp_solver_type = "SQP"
-        self.solver_options.hessian_approx = "EXACT"
-        self.solver_options.integrator_type = "ERK"
-        self.solver_options.globalization = "MERIT_BACKTRACKING"
+        if self.discrete:
+            # self.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES'
+            self.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+            self.solver_options.nlp_solver_type = "SQP"
+            self.solver_options.hessian_approx = "EXACT"
+            self.solver_options.integrator_type = "DISCRETE"
+            self.solver_options.globalization = "MERIT_BACKTRACKING"
+        else:
+            self.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+            self.solver_options.nlp_solver_type = "SQP"
+            self.solver_options.hessian_approx = "EXACT"
+            self.solver_options.integrator_type = "ERK"
+            self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
         self.solver_options.tol = 1e-4
@@ -198,10 +249,12 @@ class LOcp(AcadosOcp):
         self.solver_options.qp_solver_warm_start = 0
         self.solver_options.regularize_method = "MIRROR"
 
+
     def waypoints_to_references(self, waypoints):
         references = np.zeros([self.N, self.n_outputs])
         references[:, :4] = waypoints[1:, :]
         return references
+
 
     def optimize(self, x0, waypoints, p):
         # print("x0: ", x0)
@@ -238,15 +291,27 @@ class LOcp(AcadosOcp):
         status = 0
         return status, trajectory, inputs
 
-    def stability(self):
 
-        ctablility = ct.InputOutputSystem()
-        A = cs.jacobian(self.f, self.model.x)
-        A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
-        A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-        B = cs.jacobian(self.f, self.model.u)
-        B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-        B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+    def stability(self):
+        if self.discrete:
+            # This uses the specified discretization so either Runge Kutta 4 or Forward Euler
+            A = cs.jacobian(self.model.disc_dyn_expr, self.model.x)
+            B = cs.jacobian(self.model.disc_dyn_expr, self.model.u)
+            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
+            B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
+            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+        else:
+            # This method uses Forward Euler discretization
+            ctablility = ct.InputOutputSystem()
+            A = cs.jacobian(self.f, self.model.x)
+            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
+            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)*self.Tf/self.N
+            print(f"State matrix: {A}")
+            B = cs.jacobian(self.f, self.model.u)
+            B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
+            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)*self.Tf/self.N
+            print(f"Input matric:{B}")
 
         W = self.cost.W
         Q = np.array([
@@ -258,7 +323,7 @@ class LOcp(AcadosOcp):
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, W[4, 4]]
         ])
-        R = self.cost.W[5, 5]*3
+        R = self.cost.W[5, 5]
 
         controllable = np.linalg.matrix_rank(ct.ctrb(A, B)) == A.shape[0]
         tmp = np.linalg.matrix_rank(ct.ctrb(A.T, Q)) == A.shape[0]
@@ -271,19 +336,20 @@ class LOcp(AcadosOcp):
         print(f"Pivot indeces: {sp.Matrix(ct.ctrb(A, B)).rref()}")
         print(eigenvalues)
         print(f'System is controllable: {controllable}')
-        print(f"Controllability of (A.T, Q): {tmp}")
+        print(f'System is stabilizable: ')
+        print(f"Controllability of (A.T, Q): {tmp}".format())
         print(f"Solution to ARE exists: {tmp&controllable}")
 
         ### TERMINAL COST ###
         # STEP 1: Obtain terminal cost for (non reference tracking) quadratic cost
         #         using the solution of ricatty equation
-        if tmp & controllable:
-            K, P, E = ct.lqr(A, B, Q, R)
+        if tmp & True:
+            K, P, E = ct.dlqr(A, B, Q, R)
         else:
             print("Not attempting to solve ARE, using fake K matrix")
-            K = np.ones((self.n_inputs, self.n_states))
-            P = np.eye(self.n_states)
-            E = np.zeros(self.n_states)
+            return
+
+        pr(f"Solution of ARE: {P}")
         
         t_set_problem = cs.Opti()
         x_sym = t_set_problem.variable(self.n_states)

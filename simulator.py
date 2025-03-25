@@ -106,9 +106,11 @@ class Simulator:
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
         if nonlin:
+            print("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
             self.MPC_controller = NLSolver(self.ocp, acados_print_level)
         else:
+            print("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
 
@@ -178,7 +180,7 @@ class Simulator:
         # plotting.plot_path_and_heading(waypoints)
         # plt.draw()
         # print(speeds)
-        disturbance = np.random.normal(0, 0.1, size=self.red_state.shape)
+        disturbance = 0#np.random.normal(0, 0.1, size=self.red_state.shape)
         disturbed_state = self.red_state + disturbance
         status, trajectory, inputs = self.MPC_controller.optimize(
             disturbed_state, waypoints, speeds
