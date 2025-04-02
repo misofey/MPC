@@ -25,9 +25,9 @@ class NLOcp(AcadosOcp):
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = 0.8
+        self.max_steering = 0.4
         self.max_steering_rate = (
-            2 * self.max_steering
+            3 * self.max_steering
         )  # one second from full left to full right
 
         # Model setup
@@ -147,8 +147,8 @@ class NLOcp(AcadosOcp):
         self.cost.cost_type_e = "LINEAR_LS"
 
         # Cost matrices
-        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-4, 1e-1]) * 0.05
-        self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e0, 0.7e0, 1e-2, 0]) * 0.1
+        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-2, 1e-4]) * 1
+        self.cost.W_e = np.diag([1e-0, 1e-0, 0.7e-3, 0.7e-3, 1e-2, 0]) * 1
 
         # Reference trajectory
         self.cost.yref = np.array([0, 0, 1, 0, 0, 0])
@@ -192,6 +192,7 @@ class NLSolver(AcadosOcpSolver):
     def waypoints_to_references(self, waypoints):
         references = np.zeros([self.ocp.N + 1, self.ocp.n_outputs])
         references[:, :4] = waypoints[:, :]
+        references[:, 4] = 0.03
         return references
 
     def optimize(self, x0, waypoints, p):
@@ -204,10 +205,10 @@ class NLSolver(AcadosOcpSolver):
             self.cost_set(i, "yref", ref_points[i, :])
             self.set(i, "p", p[i])
 
-        # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
+        self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
         # self.set(0, "lbx", starting_state)
         # self.set(0, "ubx", starting_state)
-        #
+
         # status = self.solve()
         # trajectory = self.get_flat("x")
         # inputs = self.get_flat("u")
