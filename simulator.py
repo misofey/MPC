@@ -31,6 +31,7 @@ from utils.path_planning import SkidpadPlanner
 from utils.step_planning import StepPlanner
 from utils import path_planning
 from utils import plotting
+import logging
 
 
 class Dynamics:
@@ -103,16 +104,30 @@ class SkidpadSimulator:
         figures=False,
         model="LPV"
     ):
+        
+        logging.basicConfig(
+                level=logging.INFO,
+                format="[%(asctime)s][%(levelname)s] - %(message)s",
+                handlers=[
+                    logging.FileHandler("debug.log"),
+                    logging.StreamHandler()
+                ]
+            )
+        
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
+
         if model == "NL":
+            logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
             self.MPC_controller = NLSolver(self.ocp, acados_print_level)
         elif model == "L":
+            logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
         elif model == "LPV":
+            logging.info("Simulator Started with LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
 
@@ -242,19 +257,36 @@ class StepSimulator:
         acados_print_level=0,
         starting_state=None,
         figures=False,
-        nonlin=False,
+        model="LPV",
     ):
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
 
-        if nonlin:
-            print("Simulator Started with Nonlinear Model")
+        logging.basicConfig(
+                level=logging.INFO,
+                format="[%(asctime)s][%(levelname)s] - %(message)s",
+                handlers=[
+                    logging.FileHandler("debug.log"),
+                    logging.StreamHandler()
+                ]
+            )
+        
+        self.N = N  # number of prediction timesteps
+        self.Tf = Tf  # final time
+        self.dt = self.Tf / self.N
+        
+        if model == "NL":
+            logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
             self.MPC_controller = NLSolver(self.ocp, acados_print_level)
-        else:
-            print("Simulator Started with Linear Model")
+        elif model == "L":
+            logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
+            self.MPC_controller = self.ocp
+        elif model == "LPV":
+            logging.info("Simulator Started with LPV Model")
+            self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
         
         if starting_state is None:
@@ -426,8 +458,8 @@ if __name__ == "__main__":
         # plotting.plot_path_and_heading(history)
         plt.show()
     elif simulate == "step":
-        N = 10
-        Tf = 0.5
+        N = 50
+        Tf = 1
         acados_print_level = 2
 
         starting_state = [
