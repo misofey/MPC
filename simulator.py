@@ -21,7 +21,7 @@
 #
 
 from NLMPC import NLSolver, NLOcp
-from LMPC import LOcp
+from LMPC2 import LOcp
 
 
 import matplotlib.pyplot as plt
@@ -118,6 +118,7 @@ class SkidpadSimulator:
             starting_pose = [15.0, 0.1, 1.0, 0]
             starting_velocity = [8.0, 0.0, 0.0]
             starting_steering_angle = [0.0]
+            print(f"Starting speed: {starting_velocity[0]}")
         else:
             starting_pose = starting_state[:4]
             starting_velocity = starting_state[4:7]
@@ -239,13 +240,21 @@ class StepSimulator:
         acados_print_level=0,
         starting_state=None,
         figures=False,
+        nonlin=False,
     ):
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
 
-        self.ocp = NLOcp(self.N, self.Tf)
-        self.MPC_controller = NLSolver(self.ocp, acados_print_level)
+        if nonlin:
+            print("Simulator Started with Nonlinear Model")
+            self.ocp = NLOcp(self.N, self.Tf)
+            self.MPC_controller = NLSolver(self.ocp, acados_print_level)
+        else:
+            print("Simulator Started with Linear Model")
+            self.ocp = LOcp(self.N, self.Tf)
+            self.MPC_controller = self.ocp
+        
         if starting_state is None:
             starting_pose = [15.0, 0.1, 1.0, 0]
             starting_velocity = [8.0, 0.0, 0.0]
@@ -294,6 +303,36 @@ class StepSimulator:
         heading = np.arctan2(self.pose[3], self.pose[2])
         # print(self.full_state)
         return self.waypoint_generator.request_waypoints(x, y, heading)
+    
+
+    def simulate(self, n_steps) -> tuple[np.ndarray, np.ndarray]:
+
+        simulated_state_trajectory = np.zeros((n_steps, 8))
+        simulated_input_trajectory = np.zeros((n_steps, 1))
+
+        for i in range(n_steps):
+
+            waypoints, speeds, progress, heading_derotation = self.get_waypoints()
+
+            status, trajectory, inputs = self.MPC_controller.optimize(
+                self.red_state, waypoints, speeds
+            )
+            steer = trajectory[1, 6]
+
+            steer = inputs[0]
+            print("steer: ", steer)
+
+            new_state = self.dynamics.rk4_integraton(self.full_state, steer)
+
+            self.full_state = new_state
+            self.planned_references = waypoints
+            self.planned_trajectory = trajectory
+
+            simulated_state_trajectory[i, :] = new_state
+            simulated_input_trajectory[i, :] = steer
+
+        return simulated_state_trajectory, simulated_input_trajectory
+
 
     def step(self):
         plt.clf()
