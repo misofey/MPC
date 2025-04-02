@@ -5,13 +5,40 @@ import numpy as np
 import control as ct
 import sympy as sp
 from pprint import pprint as pr
+import yaml
+import logging
 
 
 class LOcp(AcadosOcp):
 
-    def __init__(self, N:int, Tf:float, discrete:bool = True, stability:bool = True):
+    def __init__(self, N:int, Tf:float, discrete:bool = True, debug:bool = False):
         AcadosOcp.__init__(self)
 
+        # Initialize logging
+        if debug:
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format="[%(asctime)s][%(levelname)s] - %(message)s",
+                handlers=[
+                    logging.FileHandler("debug.log"),
+                    logging.StreamHandler()
+                ]
+            )
+        else:
+            logging.basicConfig(
+                level=logging.INFO,
+                format="[%(asctime)s][%(levelname)s] - %(message)s",
+                handlers=[
+                    logging.FileHandler("debug.log"),
+                    logging.StreamHandler()
+                ]
+            )
+        # Load parameters from a YAML file
+        with open("parameters.yaml", "r") as file:
+            params = yaml.safe_load(file)
+
+        # Assign parameters to class attributes
+        self.params = params
         ### Constants ###
         self.discrete = discrete
         # Simulation constants
@@ -21,16 +48,16 @@ class LOcp(AcadosOcp):
         self.n_inputs = 1
         self.n_outputs = 5
         # Dynamics constants
-        self.m = 180  # Car mass [kg]
-        self.I_z = 294  # TODO: unit
-        self.wbase = 1.53  # wheel base [m]
-        self.x_cg = 0.57  # C.G x location [m]
+        self.m = params["model"]['m']  # Car mass [kg]
+        self.I_z = params["model"]['I_z']  # TODO: unit
+        self.wbase = params["model"]['wbase']  # wheel base [m]
+        self.x_cg = params["model"]['x_cg']  # C.G x location [m]
         self.lf = self.x_cg * self.wbase  # Front moment arm [m]
         self.lr = (1 - self.x_cg) * self.wbase  # Rear moment arm [m]
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = 0.8
+        self.max_steering = params["model"]['max_steering_angle']
         self.max_steering_rate = (
             2 * self.max_steering
         )  # one second from full left to full right
@@ -65,19 +92,17 @@ class LOcp(AcadosOcp):
         self.set_cost()
         # Perform stability analysis
         self.stability()
-        # Set constraints
-        self.set_constraints()
         # Set terminal cost
         self.set_terminal_cost()
-        
+        # Set constraints
+        self.set_constraints()
         # Set solver options
         self.set_solver_options()
 
         self.solver = AcadosOcpSolver(self)
-        self.solver.options_set("tol_ineq", 1e2)
-        self.solver.options_set("tol_comp", 1e2)
-        self.solver.options_set("qp_tol_ineq", 1e2)
-        self.solver.options_set("qp_tol_comp", 1e2)
+
+        self.metrics = {"runtime": []}
+
 
     def get_tyre_stiffness(self) -> tuple[float, float]:
         C_data_y = np.array(
@@ -198,45 +223,52 @@ class LOcp(AcadosOcp):
         self.constraints.ubu = np.array([ self.max_steering_rate])
 
         # Set terminal constraints
-        x_ref = cs.vcat((-1.9, -0.6, 0, 0, self.cost.yref[3]))
-        x_terminal_shifted = self.model.x[1:] - x_ref
-        self.model.con_h_expr_e = 1/2 * x_terminal_shifted.T @ self.P @ x_terminal_shifted
-        print(self.model.con_h_expr_e)
-        self.constraints.lh_e = np.array([-1000000000000])
-        self.constraints.uh_e = np.array([self.c])
+        #x_ref = cs.vcat((-1.9, -0.6, 0, 0, self.cost.yref[3]))
+        #x_terminal_shifted = self.model.x[1:] - x_ref
+        #self.model.con_h_expr_e = 1/2 * x_terminal_shifted.T @ self.P @ x_terminal_shifted
+        #print(self.model.con_h_expr_e)
+        #self.constraints.lh_e = np.array([-1000000000000])
+        #self.constraints.uh_e = np.array([self.c])
 
     def set_cost(self) -> None:
 
         # Output selection matrix
-        Vx = np.eye(self.n_outputs, self.n_states)
-        Vx[[(3, 3), (4, 4)]] = 0 # v_y, omega
-        Vx[3, 5] = 1 # steering anlge
+        Vx = np.eye(self.n_states+self.n_inputs, self.n_states)
         
         self.cost.Vx = Vx
+        self.cost.Vx_e = Vx
 
-        Vu = np.array([[0], [0], [0], [0], [1]])
+        Vu = np.zeros((self.n_states+self.n_inputs, self.n_inputs))
+        Vu[-1, 0] = 1
         self.cost.Vu = Vu
         self.cost.Vu_e = Vu
 
         self.cost.cost_type = "LINEAR_LS"
+        self.cost.cost_type_e = "LINEAR_LS"
 
         # Cost matrices
-        #TODO I deleted the last term why was it there?
-        self.cost.W = np.diag([1e3, 1e3, 1, 1, 1]) * 1e20
+        Q = np.array(self.params["controller"]["Q"])
+        R = np.array(self.params["controller"]["R"])
+        q = self.params["controller"]["q"]
+        r = self.params["controller"]["r"]
+        self.cost.W = np.zeros((self.n_states+self.n_inputs, self.n_states+self.n_inputs))
+        self.cost.W[:self.n_states, :self.n_states] = Q*q
+        self.cost.W[self.n_states:, self.n_states:] = R*r
+        self.cost.W_e = self.cost.W
 
         # Reference trajectory
-        self.cost.yref = np.array([0, 0, 0, 0, 0])
+        self.cost.yref = np.zeros(self.n_states+self.n_inputs)
+        self.cost.yref_e =  np.zeros(self.n_states+self.n_inputs)
 
         # Initial parameter trajectory
-        self.parameter_values = np.array([15.0])
+        self.parameter_values = np.array([9.0])
+
 
     def set_terminal_cost(self) -> None:
+        self.cost.W_e = np.zeros((self.n_states+self.n_inputs, self.n_states+self.n_inputs))
+        # Terminal constraint does not constrain x position and input
+        self.cost.W_e[1:-1, 1:-1] = 1/2 * self.P
 
-        self.cost.cost_type_e = "LINEAR_LS"
-        self.cost.Vx_e = np.eye(self.n_states-1, self.n_states, k=1)
-        print(self.cost.Vx_e)
-        self.cost.W_e = 1/2 * self.P
-        self.cost.yref_e = np.zeros(self.n_states-1)
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -268,10 +300,11 @@ class LOcp(AcadosOcp):
 
 
     def waypoints_to_references(self, waypoints:np.ndarray) -> np.ndarray:
-        references = np.zeros([self.N + 1, self.n_outputs])
+        references = np.zeros([self.N + 1, self.n_states + self.n_inputs])
         #TODO: comment here the sates given in waypoints
-        print(waypoints[1:, :])
-        references[:, :3] = np.concatenate((waypoints[:, :2], waypoints[:, 3:]), axis=1)
+        references[:, :3] = np.concatenate((
+            waypoints[:, :2],
+            waypoints[:, 3:]), axis=1)
         return references
     
 
@@ -279,7 +312,6 @@ class LOcp(AcadosOcp):
         # print("x0: ", x0)
         starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
         ref_points = self.waypoints_to_references(waypoints)
-        # print(ref_points)
 
         for i in range(self.N):
             self.solver.cost_set(i, "yref", ref_points[i, :])
@@ -287,7 +319,7 @@ class LOcp(AcadosOcp):
 
         x_ref_e = np.array([ref_points[self.N, 1], ref_points[self.N, 3], 0, 0, ref_points[self.N, 4]])
         self.solver.set(self.N, "yref", ref_points[self.N, :])
-        print(f"Ref: {ref_points[self.N, :]}")
+        logging.debug(f"Ref: {ref_points[self.N, :]}")
         #self.set(0, "lbx", starting_state)
         #self.set(0, "ubx", starting_state)
     
@@ -296,7 +328,11 @@ class LOcp(AcadosOcp):
         #inputs = self.get_flat("u")
 
         u0 = self.solver.solve_for_x0(starting_state)
-        print(u0)
+
+        runtime = self.solver.get_stats("time_tot")
+        self.metrics["runtime"].append(runtime)
+
+        logging.info(f"Solver runtime: {runtime*1000} ms")
 
         # fish out the results from the solver
         trajectory = np.zeros([self.N + 1, self.n_states])
@@ -305,12 +341,11 @@ class LOcp(AcadosOcp):
             trajectory[i, :] = self.solver.get(i, "x")
             inputs[i, :] = self.solver.get(i, "u")
         trajectory[self.N, :] = self.solver.get(self.N, "x")
-        print(f"Steering rate: \n {inputs[:15]}")
-        print(f"Steering angle: \n {trajectory[:15, -1]}")
-        print(f"Error: {trajectory[:15, 2]-waypoints[:15, 3]}")
-        # plt.plot(trajectory[:, -1], label="angle")
-        # plt.plot(inputs, label="rate")
-        # plt.show()
+        
+        logging.debug(f"Steering rate: \n {inputs[:15]}")
+        logging.debug(f"Steering angle: \n {trajectory[:15, -1]}")
+        logging.debug(f"Error: {trajectory[:15, 2]-waypoints[:15, 3]}")
+        
         status = 0
         # Reconstruct trajectory in the original 7 state form
         trajectory = np.concatenate((
@@ -324,7 +359,7 @@ class LOcp(AcadosOcp):
 
 
     def stability(self):
-        np.set_printoptions(precision=1)
+        #np.set_printoptions(precision=1)
         if self.discrete:
             # This uses the specified discretization so either Runge Kutta 4 or Forward Euler
             A = cs.jacobian(self.model.disc_dyn_expr, self.model.x)
@@ -350,6 +385,7 @@ class LOcp(AcadosOcp):
         
         print(f"Cont state matrix:\n {A}")    
         print(f"Cont input matric:\n {B}")
+        print(f"Sampling time: {self.Tf/self.N}")
 
         # Get Q and R matrices from W matrix
         W = self.cost.W
@@ -389,22 +425,9 @@ class LOcp(AcadosOcp):
             print("Not attempting to solve ARE, using fake K matrix")
             return
 
-        pr(f"Solution of ARE: {P}")
-        
-        # Try to find the maximum size set for terminal set while satisfying input constrints
-        t_set_problem = cs.Opti()
-        x_sym = t_set_problem.variable(self.n_states-1)
-        t_set_problem.minimize(-1/2*x_sym.T@P@x_sym)
-        t_set_problem.subject_to(K@x_sym<self.max_steering_rate)
-        t_set_problem.subject_to(K@x_sym>-self.max_steering_rate)
-        p_opts = {"expand":True}
-        s_opts = {"max_iter": 500, "tol": 10e-8}
-        t_set_problem.solver("ipopt",p_opts,s_opts)
-        solution = t_set_problem.solve()
-        state_traj = solution.value(x_sym)
+        print(f"Solution of ARE: {P}")
         self.P = P
-        self.c = 1/2*state_traj.T@P@state_traj
-        print(f"Value of c: {self.c}")
+
 
         
 
