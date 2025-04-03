@@ -57,7 +57,7 @@ class LPVOcp(AcadosOcp):
 
         self.max_steering = params["model"]['max_steering_angle']
         self.max_steering_rate = (
-            2 * self.max_steering
+            3 * self.max_steering
         )  # one second from full left to full right
 
         # Linearization point
