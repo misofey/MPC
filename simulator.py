@@ -20,7 +20,7 @@
 #         )
 #
 
-from NLMPC import NLSolver, NLOcp
+from NLMPC import NLOcp
 from LMPC2 import LOcp
 from LPVMPC import LPVOcp
 
@@ -121,7 +121,7 @@ class SkidpadSimulator:
         if model == "NL":
             logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
-            self.MPC_controller = NLSolver(self.ocp, acados_print_level)
+            self.MPC_controller = self.ocp
         elif model == "L":
             logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
@@ -275,11 +275,12 @@ class StepSimulator:
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
+        self.model = model
         
         if model == "NL":
             logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
-            self.MPC_controller = NLSolver(self.ocp, acados_print_level)
+            self.MPC_controller = self.ocp
         elif model == "L":
             logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
@@ -288,6 +289,9 @@ class StepSimulator:
             logging.info("Simulator Started with LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
+        else:
+            logging.error("Model not recognized. Please choose 'NL', 'L', or 'LPV'.")
+            return
         
         if starting_state is None:
             starting_pose = [15.0, 0.1, 1.0, 0]

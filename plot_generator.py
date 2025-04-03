@@ -10,8 +10,8 @@ import pandas as pd
 sns.set_style("whitegrid")  # Use a clean grid style
 cmap = sns.color_palette("viridis", as_cmap=True)  # Use 'viridis' for a perceptually uniform colormap
 
-dt = 0.002
-sim_len = 1000
+dt = 0.01
+sim_len = 300
 starting_state = [
     -1.0, 0.0, 1.0, 0,  # starting pose
     8.0, 0.0, 0.0,  # starting veloctiy
@@ -49,8 +49,8 @@ def plot_n_tuning():
 
 
 def plot_q_tuning():
-    q_low = 0.01
-    q_high = 1000
+    q_low = 1000
+    q_high = 10000000
     N = 40
     # Load Q values from a YAML file
     with open("parameters.yaml", "r") as file:
@@ -60,7 +60,8 @@ def plot_q_tuning():
     
     num_lines = int(np.log10(int(q_high // q_low)))  # Number of lines
     colors = [cmap(i / num_lines) for i in range(num_lines)]  # Generate unique colors
-    
+    states = []
+    models = []
     for idx in range(num_lines):
         Tf = dt * N
         q = q_low * 10 ** idx
@@ -70,6 +71,8 @@ def plot_q_tuning():
 
         sim = StepSimulator(N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state)
         state, input = sim.simulate(sim_len)
+        states.append(state)
+        models.append(f"{sim.model}-q:{q}")
         del sim.MPC_controller.solver  # Ensure garbage collection
         
         plt.plot(np.linspace(0, dt * sim_len, sim_len), state[:, 1], label=f"q={q}", linewidth=2, color=colors[idx])
@@ -78,6 +81,8 @@ def plot_q_tuning():
     # Add labels for the main plot
     plt.xlabel("Time (s)")
     plt.ylabel("State Variable")
+
+    compute_performance_metrics(states, models)
     
     # Add the main legend for q values
     # Add the main legend for q values
@@ -242,6 +247,144 @@ def plot_all_state_response():
 
     plt.show()
 
+
+def plot_compare_controllers():
+    N = 50
+    Tf = dt * N
+
+    models = ["NL", "L", "LPV"]
+    states, inputs, time_data = [], [], []
+
+    for model in models:
+        sim = StepSimulator(N=N, Tf=Tf, acados_print_level=0, starting_state=starting_state, model=model)
+        state, input = sim.simulate(sim_len)
+        states.append(state)
+        inputs.append(input)
+        time_data.append(np.array(sim.ocp.metrics["runtime"]) * 1000)  # Convert to milliseconds
+        del sim.MPC_controller.solver  # Ensure garbage collection
+
+    # Compute statistical time metrics
+    compute_time_metrics(time_data)
+
+    num_states = states[0].shape[1]
+    num_subplots = num_states + 1  # Include input subplot
+    fig, axes = plt.subplots(num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True)
+
+    # Plot results
+    time = np.linspace(0, dt * sim_len, sim_len)
+    results = []  # To store metrics for each state and model
+    colors = [cmap(i / (num_subplots*len(models))) for i in range(num_subplots*len(models))]  # Use the cmap variable for colors
+    # Plot each state on a separate subplot
+    line_styles = ['-', '--', '-.']  # Define line styles for different models
+    for i in range(num_states):
+        for model_idx, model in enumerate(models):
+            y = states[model_idx][:, i]
+            axes[i].plot(
+                time, y, 
+                label=f"{model} (x{i+1})", 
+                linewidth=2, 
+                color=colors[i*len(models) + model_idx],  # Keep the original colors
+                linestyle=line_styles[model_idx % len(line_styles)]
+            )
+        axes[i].set_ylabel(f"x{i+1} Amplitude")
+        axes[i].legend(loc="upper right", fontsize=10, frameon=True)  # Place labels in the same corner
+        axes[i].grid(True)
+
+        # Calculate metrics for each model
+        for model_idx, model in enumerate(models):
+            y = states[model_idx][:, i]
+            rise_time = next((t for t, val in enumerate(y) if val >= 0.9 * y[-1]), None) * dt
+            settling_time = next((t for t, val in enumerate(y[::-1]) if abs(val - y[-1]) > 0.02 * y[-1]), None)
+            settling_time = (sim_len - settling_time) * dt if settling_time else None
+            overshoot = max(y) - y[-1]
+
+            results.append({
+                "Model": model,
+                "State": f"x{i+1}",
+                "Rise Time (s)": rise_time,
+                "Settling Time (s)": settling_time,
+                "Overshoot": overshoot
+            })
+
+    # Plot the input on the last subplot
+    for model_idx, model in enumerate(models):
+        axes[-1].plot(time, inputs[model_idx][:, -1], label=f"{model} (Input)", linewidth=2, color=colors[model_idx], linestyle=line_styles[model_idx % len(line_styles)])
+    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_ylabel("Input Amplitude")
+    axes[-1].legend(loc="upper right", fontsize=10, frameon=True)  # Place labels in the same corner
+    axes[-1].grid(True)
+
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig("plots/compare_controllers.png", dpi=300, bbox_inches='tight')
+
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results)
+    print(df)
+
+    # Save the table to a CSV file
+    df.to_csv("plots/controller_comparison_metrics.csv", index=False)
+
+    plt.show()
+
+
+def compute_time_metrics(time_data_list: list):
+    results = []
+
+    for idx, time_data in enumerate(time_data_list):
+        # Compute statistical parameters
+        mean_runtime = np.mean(time_data)
+        median_runtime = np.median(time_data)
+        std_runtime = np.std(time_data)
+        min_runtime = np.min(time_data)
+        max_runtime = np.max(time_data)
+        percentile_90 = np.percentile(time_data, 90)
+
+        # Append the results for this dataset
+        results.append({
+            "Dataset": f"Dataset {idx + 1}",
+            "Mean Runtime (ms)": mean_runtime,
+            "Median Runtime (ms)": median_runtime,
+            "Standard Deviation (ms)": std_runtime,
+            "Minimum Runtime (ms)": min_runtime,
+            "Maximum Runtime (ms)": max_runtime,
+            "90th Percentile Runtime (ms)": percentile_90
+        })
+
+    # Convert results to a DataFrame
+    df = pd.DataFrame(results)
+
+    # Print the DataFrame
+    print(df)
+
+    return df
+
+def compute_performance_metrics(states: list, models:list = ["unkown"]):
+    results = []
+    num_states = states[0].shape[1]
+    for i in range(num_states):
+        # Calculate metrics for each model
+        for model_idx, model in enumerate(models):
+            y = states[model_idx][:, i]
+            rise_time = next((t for t, val in enumerate(y) if val >= 0.9 * y[-1]), None) * dt
+            settling_time = next((t for t, val in enumerate(y[::-1]) if abs(val - y[-1]) > 0.02 * y[-1]), None)
+            settling_time = (sim_len - settling_time) * dt if settling_time else None
+            overshoot = max(y) - y[-1]
+
+            results.append({
+                "Model": model,
+                "State": f"x{i+1}",
+                "Rise Time (s)": rise_time,
+                "Settling Time (s)": settling_time,
+                "Overshoot": overshoot
+            })
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results)
+    print(df)
+
 if __name__ == "__main__":
 
-    plot_all_state_response()
+    plot_q_tuning()

@@ -4,7 +4,6 @@ import casadi as cs
 import numpy as np
 import control as ct
 import sympy as sp
-from pprint import pprint as pr
 import yaml
 import logging
 
@@ -290,10 +289,10 @@ class LOcp(AcadosOcp):
             self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
-        self.solver_options.tol = 1e-1
+        self.solver_options.tol = 1e-4
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
-        self.solver_options.print_level = 3
+        self.solver_options.print_level = 0
          # ocp.solver_options.nlp_solver_exact_hessian = True
         self.solver_options.qp_solver_warm_start = 0
         self.solver_options.regularize_method = "MIRROR"
@@ -331,7 +330,6 @@ class LOcp(AcadosOcp):
 
         runtime = self.solver.get_stats("time_tot")
         self.metrics["runtime"].append(runtime)
-
         logging.info(f"Solver runtime: {runtime*1000} ms")
 
         # fish out the results from the solver

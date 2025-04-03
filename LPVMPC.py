@@ -55,7 +55,7 @@ class LPVOcp(AcadosOcp):
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = 0.8
+        self.max_steering = params["model"]['max_steering_angle']
         self.max_steering_rate = (
             2 * self.max_steering
         )  # one second from full left to full right
@@ -269,16 +269,16 @@ class LPVOcp(AcadosOcp):
         elif lin_mode == "reference":
             for i in range(self.N):
                 self.solver.cost_set(i, "yref", ref_points[i, :])
-                #self.solver.set(i, "p", np.array([
-                #                                ref_points[i, 0],    # x
-                #                                ref_points[i, 1],    # y
-                #                                ref_points[i, 3],    # sin heading
-                #                                self.prev_x[4, i+1], # v_y
-                #                                self.prev_x[5, i+1], # r
-                #                                self.prev_x[6, i+1], # steering angle
-                #                                p[i],                # v_x
-                #                                self.prev_u[0, i+1]
-                #    ]))#
+                self.solver.set(i, "p", np.array([
+                                                ref_points[i, 0],    # x
+                                                ref_points[i, 1],    # y
+                                                ref_points[i, 3],    # sin heading
+                                                self.prev_x[3, i+1], # v_y
+                                                self.prev_x[4, i+1], # r
+                                                self.prev_x[5, i+1], # steering angle
+                                                p[i],                # v_x
+                                                self.prev_u[0, i]
+                    ]))
 
 
         # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
