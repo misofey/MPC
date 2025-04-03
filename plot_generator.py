@@ -362,6 +362,7 @@ def compute_time_metrics(time_data_list: list):
 
     return df
 
+
 def compute_performance_metrics(states: list, models:list = ["unkown"]):
     results = []
     num_states = states[0].shape[1]
@@ -387,4 +388,4 @@ def compute_performance_metrics(states: list, models:list = ["unkown"]):
 
 if __name__ == "__main__":
 
-    plot_q_tuning()
+    plot_compare_controllers()
