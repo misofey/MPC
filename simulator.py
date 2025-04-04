@@ -102,18 +102,15 @@ class SkidpadSimulator:
         starting_state=None,
         starting_lap=None,
         figures=False,
-        model="LPV"
+        model="LPV",
     ):
-        
+
         logging.basicConfig(
-                level=logging.INFO,
-                format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
-            )
-        
+            level=logging.INFO,
+            format="[%(asctime)s][%(levelname)s] - %(message)s",
+            handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
+        )
+
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
@@ -198,7 +195,7 @@ class SkidpadSimulator:
         # plotting.plot_path_and_heading(waypoints)
         # plt.draw()
         # print(speeds)
-        disturbance = 0#np.random.normal(0, 0.1, size=self.red_state.shape)
+        disturbance = 0  # np.random.normal(0, 0.1, size=self.red_state.shape)
         disturbed_state = self.red_state + disturbance
         status, trajectory, inputs = self.MPC_controller.optimize(
             disturbed_state, waypoints, speeds
@@ -215,7 +212,7 @@ class SkidpadSimulator:
         self.full_state = new_state
         self.planned_references = waypoints
         self.planned_trajectory = trajectory
-        trig_viol = np.linalg.norm(self.planned_trajectory[:, 2:4], axis=1)-1
+        trig_viol = np.linalg.norm(self.planned_trajectory[:, 2:4], axis=1) - 1
         print(f"Trigonometric const violation: {trig_viol}")
 
         # # THIS INCLUDES THE STEERING RATE AS WELL
@@ -264,19 +261,16 @@ class StepSimulator:
         self.dt = self.Tf / self.N
 
         logging.basicConfig(
-                level=logging.INFO,
-                format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
-            )
-        
+            level=logging.INFO,
+            format="[%(asctime)s][%(levelname)s] - %(message)s",
+            handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
+        )
+
         self.N = N  # number of prediction timesteps
         self.Tf = Tf  # final time
         self.dt = self.Tf / self.N
         self.model = model
-        
+
         if model == "NL":
             logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
@@ -292,7 +286,7 @@ class StepSimulator:
         else:
             logging.error("Model not recognized. Please choose 'NL', 'L', or 'LPV'.")
             return
-        
+
         if starting_state is None:
             starting_pose = [15.0, 0.1, 1.0, 0]
             starting_velocity = [8.0, 0.0, 0.0]
@@ -301,7 +295,6 @@ class StepSimulator:
             starting_pose = starting_state[:4]
             starting_velocity = starting_state[4:7]
             starting_steering_angle = starting_state[7]
-
 
         self.pose = np.array(starting_pose)
         self.vel = np.array(starting_velocity)
@@ -341,7 +334,6 @@ class StepSimulator:
         heading = np.arctan2(self.pose[3], self.pose[2])
         # print(self.full_state)
         return self.waypoint_generator.request_waypoints(x, y, heading)
-    
 
     def simulate(self, n_steps) -> tuple[np.ndarray, np.ndarray]:
 
@@ -370,7 +362,6 @@ class StepSimulator:
             simulated_input_trajectory[i, :] = steer
 
         return simulated_state_trajectory, simulated_input_trajectory
-
 
     def step(self):
         plt.clf()
@@ -423,6 +414,7 @@ class StepSimulator:
         plotting.plot_path_and_heading(waypoints)
         plt.show()
 
+
 if __name__ == "__main__":
     # step or skidpad
     simulate = "step"
@@ -431,8 +423,13 @@ if __name__ == "__main__":
         Tf = 0.5
         acados_print_level = 2
         starting_state = [
-            0.0, 0.0, 1.0, 0,  # starting pose
-            8.0, 0.0, 0.0,  # starting veloctiy
+            0.0,
+            0.0,
+            1.0,
+            0,  # starting pose
+            8.0,
+            0.0,
+            0.0,  # starting veloctiy
             0.0,  # starting steering angle
         ]
 
@@ -467,8 +464,13 @@ if __name__ == "__main__":
         acados_print_level = 2
 
         starting_state = [
-            -1.0, 0.0, 1.0, 0,  # starting pose
-            8.0, 0.0, 0.0,  # starting veloctiy
+            -1.0,
+            0.0,
+            1.0,
+            0,  # starting pose
+            8.0,
+            0.0,
+            0.0,  # starting veloctiy
             0.0,  # starting steering angle
         ]
 
