@@ -8,6 +8,7 @@ import sympy as sp
 from pprint import pprint as pr
 import yaml
 import logging
+import pandas as pd
 
 
 class TargetSelector:
@@ -44,6 +45,7 @@ class TargetSelector:
         self.Tf = Tf
         #  All states: x, y, heading, v_y, omega, steering_angle
         self.n_states = 6
+        self.n_disturbances = 1
         self.n_inputs = 1
         # Measured states: x, y, omega, steering_angle
         self.n_outputs = 5
@@ -59,13 +61,16 @@ class TargetSelector:
 
         self.max_steering = params["model"]['max_steering_angle']
         self.max_steering_rate = (
-            2 * self.max_steering
+            3 * self.max_steering
         )  # one second from full left to full right
 
         # Linearization point
         self.x_lin_point = np.array([0, 0, 0, 0, 0, 0])
         self.u_lin_point = np.array([0])
         self.p_lin_point = np.array([15.0])
+
+        self.d_hat = 0.5*np.ones((self.n_disturbances, 1))
+        self.y_ref = np.zeros((self.N, self.n_outputs))
 
         # Set cost
         self.set_cost()
@@ -98,17 +103,19 @@ class TargetSelector:
 
 
     def set_dynamics(self):
+        x = cs.MX.sym("x", self.n_states)
+        u = cs.MX.sym("u", self.n_inputs)
+        p = cs.MX.sym("p", 1)
+        p_x = x[0, 0]
+        p_y = x[1, 0]
+        heading = x[2, 0]
+        v_y = x[3, 0]
+        omega = x[4, 0]
+        steering_angle = x[5, 0]
 
-        p_x = self.model.x[0, 0]
-        p_y = self.model.x[1, 0]
-        heading = self.model.x[2, 0]
-        v_y = self.model.x[3, 0]
-        omega = self.model.x[4, 0]
-        steering_angle = self.model.x[5, 0]
+        steering_rate = u[0, 0]
 
-        steering_rate = self.model.u[0, 0]
-
-        v_x = self.model.p[0, 0]
+        v_x = p[0, 0]
 
         d_p_x = v_x * 1 #- v_y * np.sin(heading)
 
@@ -136,13 +143,17 @@ class TargetSelector:
             d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering
         )
 
-        self.A = cs.jacobian(self.f, self.model.x)
-        self.A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
-        self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
-        self.B = cs.jacobian(self.f, self.model.u)
-        self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
+        self.A = cs.jacobian(self.f, x)
+        self.A = cs.Function("A", [x, u, p], [self.A])
+        self.A = self.A(self.x_lin_point, self.u_lin_point, self.p_lin_point) * (self.Tf/self.N) + np.eye(self.n_states)
 
+        self.B = cs.jacobian(self.f, u)
+        self.B = cs.Function("B", [x, u, p], [self.B])
+        self.B = self.B(self.x_lin_point, self.u_lin_point, self.p_lin_point) * (self.Tf/self.N)
+
+        self.B_d = np.eye(self.n_states, self.n_disturbances)
+        self.C_d = np.zeros((self.n_outputs, self.n_disturbances))
+        self.C = np.ones((self.n_outputs, self.n_states))
 
     def apply_rk4_with_linearized_matrices(self):
         
@@ -167,53 +178,85 @@ class TargetSelector:
 
 
     def set_constraints(self) -> None:
-        # Dynamics equality constraints
-        Ax = sparse.kron(sparse.eye(N), -np.eye(self.n_states)) + sparse.kron(sparse.eye(N, k=-1), A)
-        Bu = sparse.kron(sparse.eye(N), B)
-        E = sparse.hstack([Ax, Bu]) # Stack A and B matrices
-        rhs = sparse.tile(B_d @ d_hat, N) # Right hand side of the equation
-        # Convert to sparse matrices to format of OSQP
-        A_eq = sparse.csc_matrix(E)
-        l_eq = rhs
-        u_eq = rhs
+        
+        first_row = np.hstack((self.A, self.B, np.eye(self.n_states)))
+        second_row = np.hstack([np.zeros((self.n_outputs, self.n_states)), self.C, np.zeros((self.n_outputs, self.n_inputs))])
+        E = sparse.vstack([first_row, second_row])
+        A_eq = sparse.csc_matrix((self.N * (self.n_states + self.n_outputs), self.N * (2*self.n_states + self.n_inputs)))
+        for i in range(self.N):
+            if i == 0:
+                tmp = 0
+            else:
+                tmp = 1
+            i_start = i * (self.n_states + self.n_outputs)
+            i_end = (i + 1) * (self.n_states + self.n_outputs)
+            j_start = i * (2*self.n_states + self.n_inputs) - self.n_states*tmp
+            j_end = (i + 1) * (2*self.n_states + self.n_inputs) - self.n_states*tmp
+            print(j_end - j_start)
+            print(i_end - i_start)
+            print(E.shape)
+            A_eq[i_start: i_end, j_start: j_end] = E
+            
+        # Transform matrices in sparse form for the horizon
+        df = pd.DataFrame(A_eq[:5*self.n_states, :5*self.n_states].toarray())
+        print(df)
+        initial_condition = np.hstack([np.eye(self.n_states), np.zeros((self.n_states, self.N*(2*self.n_states + self.n_inputs)-self.n_states))])
+        self.A_eq = sparse.vstack([initial_condition, A_eq])
+        
 
-        # Bounds for self.model.x
-        self.constraints.idxbx = np.array([5])
-        self.constraints.lbx = np.array([-self.max_steering])
-        self.constraints.ubx = np.array([self.max_steering])
+        # RHS
+        y = np.zeros((self.n_states, self.n_outputs))
+        E_rhs = sparse.vstack([self.B_d@self.d_hat, -self.C_d@self.d_hat])
+        print(E_rhs.shape)
+        E_rhs = np.repeat(E_rhs, self.N, 0)
+        print(E_rhs.shape)
 
-        # Intial condition
-        self.constraints.idxbx_0 = np.array([0, 1, 2, 3, 4, 5])
-        self.constraints.lbx_0 = np.array([0, 0, 0, 0, 0, 0])
-        self.constraints.ubx_0 = np.array([0, 0, 0, 0, 0, 0])
+        
+        u_bounds_min = np.tile(-self.max_steering_rate, (self.N, 1))
+        u_bounds_max = np.tile(self.max_steering_rate, (self.N, 1))
 
-        # Bounds for input
-        self.constraints.idxbu = np.array([0])  # the 0th input has the constraints, so J_bu = [1]
-        self.constraints.lbu = np.array([-self.max_steering_rate])
-        self.constraints.ubu = np.array([ self.max_steering_rate])
+        #self.l_eq = np.hstack([rhs, x_bounds_min_statesn, u_bounds_min])
+        #self.u_eq = np.hstack([rhs, x_bounds_max, u_bounds_max])    
+        self.l_eq = np.vstack((E_rhs))
+        self.u_eq = np.vstack([E_rhs])    
 
-        # Set terminal constraints
-        #x_ref = cs.vcat((-1.9, -0.6, 0, 0, self.cost.yref[3]))
-        #x_terminal_shifted = self.model.x[1:] - x_ref
-        #self.model.con_h_expr_e = 1/2 * x_terminal_shifted.T @ self.P @ x_terminal_shifted
-        #print(self.model.con_h_expr_e)
-        #self.constraints.lh_e = np.array([-1000000000000])
-        #self.constraints.uh_e = np.array([self.c])
+        print(f"A_eq shape: {self.A_eq.shape}")
+        print(f"l_eq shape: {self.l_eq.shape}")
+        print(f"u_eq shape: {self.u_eq.shape}")
 
     def set_cost(self) -> None:
 
+        Q = np.eye(self.n_states)  # Identity matrix for output cost
+        R = np.eye(self.n_inputs)  # Identity matrix for input cost
+
+
+        # Quadratic cost matrix
+        Q_big = sparse.kron(sparse.eye(self.N), Q)
+        R_big = sparse.kron(sparse.eye(self.N), R)
+        self.P = sparse.block_diag([Q_big, R_big])
+
+        self.q = np.zeros(self.N * (self.n_states + self.n_inputs))
+
         return None
 
-    def optimize_target(self, x_0_hat, d_hat) -> np.ndarray:
+    def optimize_target(self, x_0_hat, waypoints, d_hat=[0.5]) -> np.ndarray:
 
         # Update RHS of equality costraint to ensure initial conditions and disturbance value
-        rhs_new = np.tile(self.B_d @ d_hat, self.N)
-        rhs_new[:self.n_states] += self.A @ x_0_hat
+        # Compute new right-hand side for equality constraints
+        # Add A @ x0 to first stage dynamics (only the first nx rows)
+        y_ref = self.waypoints_to_references(waypoints)
+        x0_term = np.zeros(self.N * self.n_states)
+        x0_term[:self.n_x] = self.A @ x_0_hat
 
-        # Update only the relevant part of constraints
-        self.l_eq[:self.N * self.n_states] = rhs_new
-        self.u_eq[:self.N * self.n_states] = rhs_new
-        self.solver.update(l=self.l_eq, u=self.u_eq)
+        # Compute new right-hand side for equality constraints
+        rhs = np.hstack([self.Bd_big @ d_hat + x0_term, y_ref - self.Cd_big @ d_hat])
+
+        # Bounds
+        l = np.hstack([rhs, self.u_bounds_min])
+        u = np.hstack([rhs, self.u_bounds_max])
+
+        # Update solver constraints
+        self.solver.update(l=l, u=u)
 
         sol = self.solver.solve()
         if sol.info.status_val != osqp.OSQP_SOLVED:
@@ -234,129 +277,6 @@ class TargetSelector:
             waypoints[:, :2],
             waypoints[:, 3:]), axis=1)
         return references
-    
-
-    def optimize(self, x0, waypoints, p):
-        # print("x0: ", x0)
-        starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
-        ref_points = self.waypoints_to_references(waypoints)
-
-        for i in range(self.N):
-            self.solver.cost_set(i, "yref", ref_points[i, :])
-            self.solver.set(i, "p", p[i])
-
-        x_ref_e = np.array([ref_points[self.N, 1], ref_points[self.N, 3], 0, 0, ref_points[self.N, 4]])
-        self.solver.set(self.N, "yref", ref_points[self.N, :])
-        logging.debug(f"Ref: {ref_points[self.N, :]}")
-        #self.set(0, "lbx", starting_state)
-        #self.set(0, "ubx", starting_state)
-    
-        #status = self.solve()
-        #trajectory = self.get_flat("x")
-        #inputs = self.get_flat("u")def stability(self):
-        #np.set_printoptions(precision=1)
-        if self.discrete:
-            # This uses the specified discretization so either Runge Kutta 4 or Forward Euler
-            A = cs.jacobian(self.model.disc_dyn_expr, self.model.x)
-            B = cs.jacobian(self.model.disc_dyn_expr, self.model.u)
-            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
-            B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
-            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            A = A[1:, 1:] # remove x position because it is uncontrollable, it is onl there for the simulation
-            B = B[1:, :]
-        else:
-            # This method uses Forward Euler discretization
-            A = cs.jacobian(self.f, self.model.x)
-            B = cs.jacobian(self.f, self.model.u)
-            A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
-            B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            C = np.zeros((self.n_outputs, self.n_states))
-            D = np.zeros((self.n_outputs, self.n_inputs))
-            dsys = ct.ss(A, B, C, D, self.Tf/self.N)
-            dsys = ct.sample_system(dsys, self.Tf/self.N)
-        
-        print(f"Cont state matrix:\n {A}")    
-        print(f"Cont input matric:\n {B}")
-        print(f"Sampling time: {self.Tf/self.N}")
-
-        # Get Q and R matrices from W matrix
-        W = self.cost.W
-        Q = np.array([
-            [W[0, 0], 0, 0, 0, 0, 0],
-            [0, W[1, 1], 0, 0, 0, 0],
-            [0, 0, W[2, 2], 0, 0, 0],
-            [0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, W[3, 3]]
-        ])
-        Q = Q[1:, 1:]
-        R = self.cost.W[4, 4]
-        
-        # Check Conditions for existance of ARE solutio
-        controllable = np.linalg.matrix_rank(ct.ctrb(A, B)) == A.shape[0]
-        tmp = np.linalg.matrix_rank(ct.ctrb(A.T, Q)) == A.shape[0]
-        # find Q such that modes on im axis are controllable
-        eigenvalues = np.linalg.eigvals(A)
-
-        first_nonzero_index = lambda array: np.flatnonzero(array)[0] if np.any(array) else -1
-        
-        pivot_indeces = np.apply_along_axis(first_nonzero_index, axis=1, arr=ct.ctrb(A, B))
-        print(f"Controllability matrix: \n {sp.Matrix(ct.ctrb(A, B)).rref()}")
-        print(f"Eigenvalues: {eigenvalues}")
-        print(f'System is controllable: {controllable}')
-        print(f'System is stabilizable: ')
-        print(f"Controllability of (A.T, Q): {tmp}".format())
-        print(f"Solution to ARE exists: {tmp&controllable}")
-
-        ### TERMINAL COST ###
-        # STEP 1: Obtain terminal cost for (non reference tracking) quadratic cost
-        #         using the solution of ARE
-        if tmp & True:
-            K, P, E = ct.dlqr(A, B, Q, R)
-        else:
-            print("Not attempting to solve ARE, using fake K matrix")
-            return
-
-        print(f"Solution of ARE: {P}")
-        self.P = P
-
-
-        
-
-
-
-        u0 = self.solver.solve_for_x0(starting_state)
-
-        runtime = self.solver.get_stats("time_tot")
-        self.metrics["runtime"].append(runtime)
-
-        logging.info(f"Solver runtime: {runtime*1000} ms")
-
-        # fish out the results from the solver
-        trajectory = np.zeros([self.N + 1, self.n_states])
-        inputs = np.zeros([self.N, self.n_inputs])
-        for i in range(self.N):
-            trajectory[i, :] = self.solver.get(i, "x")
-            inputs[i, :] = self.solver.get(i, "u")
-        trajectory[self.N, :] = self.solver.get(self.N, "x")
-        
-        logging.debug(f"Steering rate: \n {inputs[:15]}")
-        logging.debug(f"Steering angle: \n {trajectory[:15, -1]}")
-        logging.debug(f"Error: {trajectory[:15, 2]-waypoints[:15, 3]}")
-        
-        status = 0
-        # Reconstruct trajectory in the original 7 state form
-        trajectory = np.concatenate((
-            trajectory[:, :2],
-            np.cos(trajectory[:, 2:3]),
-            np.sin(trajectory[:, 2:3]),
-            trajectory[:, 3:]
-            ), axis=1)
-
-        return status, trajectory, inputs
 
 
 if __name__ == "__main__":
