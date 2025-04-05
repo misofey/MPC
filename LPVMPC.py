@@ -7,7 +7,7 @@ import yaml
 
 
 class LPVOcp(AcadosOcp):
-    def __init__(self, N:int, Tf:float, discrete:bool = True, debug:bool = False):
+    def __init__(self, N: int, Tf: float, discrete: bool = True, debug: bool = False):
         AcadosOcp.__init__(self)
 
         # Initialize logging
@@ -15,19 +15,13 @@ class LPVOcp(AcadosOcp):
             logging.basicConfig(
                 level=logging.DEBUG,
                 format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
+                handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         else:
             logging.basicConfig(
                 level=logging.INFO,
                 format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
+                handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         # Load parameters from a YAML file
         with open("parameters.yaml", "r") as file:
@@ -46,16 +40,16 @@ class LPVOcp(AcadosOcp):
         self.n_outputs = 5
 
         # Dynamics constants
-        self.m = params["model"]['m']
-        self.I_z = params["model"]['I_z']
-        self.wbase = params["model"]['wbase']
-        self.x_cg = params["model"]['x_cg']
+        self.m = params["model"]["m"]
+        self.I_z = params["model"]["I_z"]
+        self.wbase = params["model"]["wbase"]
+        self.x_cg = params["model"]["x_cg"]
         self.lf = self.x_cg * self.wbase
-        self.lr = (1 - self.x_cg) * self.wbase 
+        self.lr = (1 - self.x_cg) * self.wbase
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = params["model"]['max_steering_angle']
+        self.max_steering = params["model"]["max_steering_angle"]
         self.max_steering_rate = (
             3 * self.max_steering
         )  # one second from full left to full right
@@ -65,9 +59,9 @@ class LPVOcp(AcadosOcp):
         self.u_lin_point = np.array([0])
         self.p_lin_point = np.array([15.0])
         self.prev_x = np.array([[0, 0, 0, 0, 0, 0]])
-        self.prev_x = np.repeat(self.prev_x, self.N+1, 0).T
+        self.prev_x = np.repeat(self.prev_x, self.N + 1, 0).T
         self.prev_u = np.array([[0]])
-        self.prev_u = np.repeat(self.prev_u, self.N+1, 1)
+        self.prev_u = np.repeat(self.prev_u, self.N + 1, 1)
 
         # Model setup
         self.model = AcadosModel()
@@ -81,7 +75,7 @@ class LPVOcp(AcadosOcp):
         self.model.xdot = cs.MX.sym("xdot", self.n_states)
 
         ### Parameters ###
-        self.model.p = cs.MX.sym("p", self.n_states+self.n_inputs+self.n_params)
+        self.model.p = cs.MX.sym("p", self.n_states + self.n_inputs + self.n_params)
 
         # Set model dynamics
         self.set_dynamics()
@@ -138,11 +132,15 @@ class LPVOcp(AcadosOcp):
 
         d_v_y = -(self.Cf + self.Cr) / (self.m * v_x + 0.001) * v_y
         d_v_y += (
-            (-v_x + (self.Cr * self.lr - self.Cf * self.lf)) / (self.m * v_x + 0.001) * omega
+            (-v_x + (self.Cr * self.lr - self.Cf * self.lf))
+            / (self.m * v_x + 0.001)
+            * omega
         )
         d_v_y -= self.Cf / self.m * steering_angle
 
-        d_omega = (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x + 0.001) * v_y
+        d_omega = (
+            (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x + 0.001) * v_y
+        )
         d_omega += (
             -(self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
             / (self.I_z * v_x + 0.001)
@@ -152,21 +150,23 @@ class LPVOcp(AcadosOcp):
 
         d_steering = steering_rate
 
-        self.f = cs.vertcat(
-            d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering
-        )
+        self.f = cs.vertcat(d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering)
 
         self.A = cs.jacobian(self.f, self.model.x)
         self.A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
         self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
         self.B = cs.jacobian(self.f, self.model.u)
         self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
+        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p)
 
-
-        self.model.f_expl_expr = self.A @ (self.model.x) + self.B @ (self.model.u) + cs.vertcat(v_x, 0, 0, 0, 0, 0)
-        self.model.f_impl_expr = self.model.xdot - (self.A @ self.model.x + self.B @ self.model.u)
-
+        self.model.f_expl_expr = (
+            self.A @ (self.model.x)
+            + self.B @ (self.model.u)
+            + cs.vertcat(v_x, 0, 0, 0, 0, 0)
+        )
+        self.model.f_impl_expr = self.model.xdot - (
+            self.A @ self.model.x + self.B @ self.model.u
+        )
 
     def set_constraints(self) -> None:
         # Bounds for self.model.x
@@ -180,19 +180,21 @@ class LPVOcp(AcadosOcp):
         self.constraints.ubx_0 = np.array([0, 0, 0, 0, 0, 0])
 
         # Bounds for input
-        self.constraints.idxbu = np.array([0])  # the 0th input has the constraints, so J_bu = [1]
+        self.constraints.idxbu = np.array(
+            [0]
+        )  # the 0th input has the constraints, so J_bu = [1]
         self.constraints.lbu = np.array([-self.max_steering_rate])
-        self.constraints.ubu = np.array([ self.max_steering_rate])
+        self.constraints.ubu = np.array([self.max_steering_rate])
 
     def set_cost(self) -> None:
 
         # Output selection matrix
-        Vx = np.eye(self.n_states+self.n_inputs, self.n_states)
-        
+        Vx = np.eye(self.n_states + self.n_inputs, self.n_states)
+
         self.cost.Vx = Vx
         self.cost.Vx_e = Vx
 
-        Vu = np.zeros((self.n_states+self.n_inputs, self.n_inputs))
+        Vu = np.zeros((self.n_states + self.n_inputs, self.n_inputs))
         Vu[-1, 0] = 1
         self.cost.Vu = Vu
         self.cost.Vu_e = Vu
@@ -205,18 +207,21 @@ class LPVOcp(AcadosOcp):
         R = np.array(self.params["controller"]["R"])
         q = self.params["controller"]["q"]
         r = self.params["controller"]["r"]
-        self.cost.W = np.zeros((self.n_states+self.n_inputs, self.n_states+self.n_inputs))
-        self.cost.W[:self.n_states, :self.n_states] = Q*q
-        self.cost.W[self.n_states:, self.n_states:] = R*r
+        self.cost.W = np.zeros(
+            (self.n_states + self.n_inputs, self.n_states + self.n_inputs)
+        )
+        self.cost.W[: self.n_states, : self.n_states] = Q * q
+        self.cost.W[self.n_states :, self.n_states :] = R * r
         self.cost.W_e = self.cost.W
 
         # Reference trajectory
-        self.cost.yref = np.zeros(self.n_states+self.n_inputs)
-        self.cost.yref_e =  np.zeros(self.n_states+self.n_inputs)
+        self.cost.yref = np.zeros(self.n_states + self.n_inputs)
+        self.cost.yref_e = np.zeros(self.n_states + self.n_inputs)
 
         # Initial parameter trajectory
-        self.parameter_values = np.concatenate((self.prev_x[:, 0], np.array([15.0]), self.prev_u[:, 0]))
-
+        self.parameter_values = np.concatenate(
+            (self.prev_x[:, 0], np.array([15.0]), self.prev_u[:, 0])
+        )
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -234,52 +239,60 @@ class LPVOcp(AcadosOcp):
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
         self.solver_options.print_level = 0
-         # ocp.solver_options.nlp_solver_exact_hessian = True
+        # ocp.solver_options.nlp_solver_exact_hessian = True
         self.solver_options.qp_solver_warm_start = 0
         self.solver_options.regularize_method = "MIRROR"
 
-    def waypoints_to_references(self, waypoints:np.ndarray) -> np.ndarray:
+    def waypoints_to_references(self, waypoints: np.ndarray) -> np.ndarray:
         references = np.zeros([self.N + 1, self.n_states + self.n_inputs])
-        #TODO: comment here the sates given in waypoints
-        references[:, :3] = np.concatenate((
-            waypoints[:, :2],
-            waypoints[:, 3:]), axis=1)
+        # TODO: comment here the sates given in waypoints
+        references[:, :3] = np.concatenate((waypoints[:, :2], waypoints[:, 3:]), axis=1)
         return references
 
-    def optimize(self, x0, waypoints, p, lin_mode:str = "prev_iter"):
+    def optimize(self, x0, waypoints, p, lin_mode: str = "prev_iter"):
         starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
         ref_points = self.waypoints_to_references(waypoints)
 
         if lin_mode == "prev_iter":
-        # Use previous iteration as lin point
+            # Use previous iteration as lin point
             for i in range(self.N):
                 self.solver.cost_set(i, "yref", ref_points[i, :])
-                self.solver.set(i, "p", np.array([
-                                                self.prev_x[0, i+1], # x
-                                                self.prev_x[1, i+1], # y
-                                                self.prev_x[2, i+1], # sin heading 
-                                                self.prev_x[3, i+1], # v_y
-                                                self.prev_x[4, i+1], # r
-                                                self.prev_x[5, i+1], # steering angle
-                                                p[i],                # v_x
-                                                self.prev_u[0, i]  # steering rate
-                                                
-                    ]))
-                
+                self.solver.set(
+                    i,
+                    "p",
+                    np.array(
+                        [
+                            self.prev_x[0, i + 1],  # x
+                            self.prev_x[1, i + 1],  # y
+                            self.prev_x[2, i + 1],  # sin heading
+                            self.prev_x[3, i + 1],  # v_y
+                            self.prev_x[4, i + 1],  # r
+                            self.prev_x[5, i + 1],  # steering angle
+                            p[i],  # v_x
+                            self.prev_u[0, i],  # steering rate
+                        ]
+                    ),
+                )
+
         elif lin_mode == "reference":
             for i in range(self.N):
                 self.solver.cost_set(i, "yref", ref_points[i, :])
-                self.solver.set(i, "p", np.array([
-                                                ref_points[i, 0],    # x
-                                                ref_points[i, 1],    # y
-                                                ref_points[i, 3],    # sin heading
-                                                self.prev_x[3, i+1], # v_y
-                                                self.prev_x[4, i+1], # r
-                                                self.prev_x[5, i+1], # steering angle
-                                                p[i],                # v_x
-                                                self.prev_u[0, i]
-                    ]))
-
+                self.solver.set(
+                    i,
+                    "p",
+                    np.array(
+                        [
+                            ref_points[i, 0],  # x
+                            ref_points[i, 1],  # y
+                            ref_points[i, 3],  # sin heading
+                            self.prev_x[3, i + 1],  # v_y
+                            self.prev_x[4, i + 1],  # r
+                            self.prev_x[5, i + 1],  # steering angle
+                            p[i],  # v_x
+                            self.prev_u[0, i],
+                        ]
+                    ),
+                )
 
         # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
         # self.set(0, "lbx", starting_state)
@@ -302,36 +315,43 @@ class LPVOcp(AcadosOcp):
             trajectory[i, :] = self.solver.get(i, "x")
             inputs[i, :] = self.solver.get(i, "u")
         trajectory[self.N, :] = self.solver.get(self.N, "x")
-        self.prev_x = np.array([
-            trajectory[: ,0], # x
-            trajectory[: ,1], # y
-            trajectory[: ,2], # cos heading
-            trajectory[: ,3], # sin heading 
-            trajectory[:, 4], # v_y
-            trajectory[:, 5], # r# steering angle
-        ])
-        self.prev_u = np.array([
-            inputs[:, 0],     # steering rate
-        ])
+        self.prev_x = np.array(
+            [
+                trajectory[:, 0],  # x
+                trajectory[:, 1],  # y
+                trajectory[:, 2],  # cos heading
+                trajectory[:, 3],  # sin heading
+                trajectory[:, 4],  # v_y
+                trajectory[:, 5],  # r# steering angle
+            ]
+        )
+        self.prev_u = np.array(
+            [
+                inputs[:, 0],  # steering rate
+            ]
+        )
 
         status = 0
 
-        trajectory = np.concatenate((
-            trajectory[:, :2],
-            np.cos(trajectory[:, 2:3]),
-            np.sin(trajectory[:, 2:3]),
-            trajectory[:, 3:]
-            ), axis=1)
+        trajectory = np.concatenate(
+            (
+                trajectory[:, :2],
+                np.cos(trajectory[:, 2:3]),
+                np.sin(trajectory[:, 2:3]),
+                trajectory[:, 3:],
+            ),
+            axis=1,
+        )
 
         return status, trajectory, inputs
 
-    
+
 if __name__ == "__main__":
     N = 100
     Tf = 0.5
     ocp = NLOcp(N, Tf)
     x0 = np.array([0, 0, 1, 0, 0, 0, 0])
-    ref_points = np.ones((N, 6))*0.01
+    ref_points = np.ones((N, 6)) * 0.01
     p = np.array([1.0])
     status, trajectory = ocp.solve_problem(x0, ref_points, p)
     plt.plot(trajectory[0, :], trajectory[1, :])

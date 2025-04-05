@@ -9,7 +9,9 @@ from pprint import pprint as pr
 
 class LOcp(AcadosOcp):
 
-    def __init__(self, N:int, Tf:float, discrete:bool = True, stability:bool = False):
+    def __init__(
+        self, N: int, Tf: float, discrete: bool = True, stability: bool = False
+    ):
         AcadosOcp.__init__(self)
 
         ### Constants ###
@@ -72,7 +74,6 @@ class LOcp(AcadosOcp):
         else:
             self.solver = AcadosOcpSolver(self)
 
-
     def get_tyre_stiffness(self) -> tuple[float, float]:
         C_data_y = np.array(
             [
@@ -88,7 +89,6 @@ class LOcp(AcadosOcp):
         Cr = np.interp((9.81 * self.m / 2) * self.x_cg, C_data_x, C_data_y)
 
         return Cf, Cr
-
 
     def get_dynamics(self):
 
@@ -135,45 +135,56 @@ class LOcp(AcadosOcp):
         self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
         self.B = cs.jacobian(self.f, self.model.u)
         self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p) 
+        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p)
 
+    def set_discrete_dynamics(self, type: str = "fe") -> None:
 
-    def set_discrete_dynamics(self, type:str = "fe") -> None:
-        
         if type == "rk4":
             self.apply_rk4_with_linearized_matrices()
         elif type == "fe":
-            self.model.disc_dyn_expr = self.model.x + (self.A @ (self.model.x-self.x_lin_point) + self.B @ (self.model.u-self.u_lin_point) + self.x_lin_point) * self.Tf/self.N 
-    
+            self.model.disc_dyn_expr = (
+                self.model.x
+                + (
+                    self.A @ (self.model.x - self.x_lin_point)
+                    + self.B @ (self.model.u - self.u_lin_point)
+                    + self.x_lin_point
+                )
+                * self.Tf
+                / self.N
+            )
 
     def apply_rk4_with_linearized_matrices(self):
-        
-        dt = self.Tf / self.N # Time step
 
-        # TODO: The linearization point should be from x and u 
+        dt = self.Tf / self.N  # Time step
+
+        # TODO: The linearization point should be from x and u
         # idk why it works like this but not like that
-        x_dot = lambda x, u: self.A @ (x-self.x_lin_point) + self.B @ (u-self.u_lin_point) - self.x_lin_point
+        x_dot = (
+            lambda x, u: self.A @ (x - self.x_lin_point)
+            + self.B @ (u - self.u_lin_point)
+            - self.x_lin_point
+        )
 
         # Compute RK4 steps using linearized system
         k1 = x_dot(self.model.x, self.model.u)
         k2 = x_dot(self.model.x + (dt / 2) * k1, self.model.u)
         k3 = x_dot(self.model.x + (dt / 2) * k2, self.model.u)
         k4 = x_dot(self.model.x + dt * k3, self.model.u)
-    
 
         # Compute the RK4 update step
         x_next = self.model.x + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
 
         # Set the discretized dynamics
         self.model.disc_dyn_expr = x_next
-    
 
     def set_cont_dynamics(self) -> None:
 
         # TODO: same comment as at the ddiscrete model
-        self.model.f_expl_expr = (self.A @ (self.model.x) + self.B @ (self.model.u))
-        self.model.f_impl_expr = self.model.xdot - (self.A @ (self.model.x - self.x_lin_point) + self.B @ (self.model.u - self.u_lin_point))
-
+        self.model.f_expl_expr = self.A @ (self.model.x) + self.B @ (self.model.u)
+        self.model.f_impl_expr = self.model.xdot - (
+            self.A @ (self.model.x - self.x_lin_point)
+            + self.B @ (self.model.u - self.u_lin_point)
+        )
 
     def set_constraints(self) -> None:
         # Bounds for self.model.x
@@ -193,14 +204,13 @@ class LOcp(AcadosOcp):
         self.constraints.lbu = np.array([-self.max_steering_rate])
         self.constraints.ubu = np.array([self.max_steering_rate])
 
-
     def set_cost(self) -> None:
 
         # Output selection matrix
         Vx = np.eye(self.n_outputs, self.n_states)
         Vx[[(4, 4), (5, 5)]] = 0
         Vx[4, 6] = 1
-        
+
         self.cost.Vx_e = Vx
         self.cost.Vx = Vx
 
@@ -212,7 +222,7 @@ class LOcp(AcadosOcp):
         self.cost.cost_type_e = "LINEAR_LS"
 
         # Cost matrices
-        #TODO I deleted the last term why was it there?
+        # TODO I deleted the last term why was it there?
         self.cost.W = np.diag([1e0, 1e0, 1, 1, 1, 1]) * 100
         self.cost.W_e = np.diag([1e-3, 1e-3, 0.7e-5, 0.7e-5, 1e-2, 0]) * 0.1
 
@@ -222,7 +232,6 @@ class LOcp(AcadosOcp):
 
         # Initial parameter trajectory
         self.parameter_values = np.array([9.0])
-
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -248,16 +257,14 @@ class LOcp(AcadosOcp):
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
         self.solver_options.print_level = 3
-         # ocp.solver_options.nlp_solver_exact_hessian = True
+        # ocp.solver_options.nlp_solver_exact_hessian = True
         self.solver_options.qp_solver_warm_start = 0
         self.solver_options.regularize_method = "MIRROR"
 
-
-    def waypoints_to_references(self, waypoints:np.ndarray) -> np.ndarray:
+    def waypoints_to_references(self, waypoints: np.ndarray) -> np.ndarray:
         references = np.zeros([self.N, self.n_outputs])
         references[:, :4] = waypoints[1:, :]
         return references
-
 
     def optimize(self, x0, waypoints, p):
         # print("x0: ", x0)
@@ -294,7 +301,6 @@ class LOcp(AcadosOcp):
         status = 0
         return status, trajectory, inputs
 
-
     def stability(self):
         np.set_printoptions(precision=1)
         if self.discrete:
@@ -303,37 +309,51 @@ class LOcp(AcadosOcp):
             B = cs.jacobian(self.model.disc_dyn_expr, self.model.u)
             A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [A])
             B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [B])
-            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+            A = np.array(
+                A(self.x_lin_point, self.u_lin_point, self.p_lin_point),
+                dtype=np.float32,
+            )
+            B = np.array(
+                B(self.x_lin_point, self.u_lin_point, self.p_lin_point),
+                dtype=np.float32,
+            )
         else:
             # This method uses Forward Euler discretization
             A = cs.jacobian(self.f, self.model.x)
             B = cs.jacobian(self.f, self.model.u)
             A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
             B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-            A = np.array(A(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
-            B = np.array(B(self.x_lin_point, self.u_lin_point, self.p_lin_point), dtype=np.float32)
+            A = np.array(
+                A(self.x_lin_point, self.u_lin_point, self.p_lin_point),
+                dtype=np.float32,
+            )
+            B = np.array(
+                B(self.x_lin_point, self.u_lin_point, self.p_lin_point),
+                dtype=np.float32,
+            )
             C = np.zeros((self.n_outputs, self.n_states))
             D = np.zeros((self.n_outputs, self.n_inputs))
-            dsys = ct.ss(A, B, C, D, self.Tf/self.N)
-            dsys = ct.sample_system(dsys, self.Tf/self.N)
-        
+            dsys = ct.ss(A, B, C, D, self.Tf / self.N)
+            dsys = ct.sample_system(dsys, self.Tf / self.N)
+
         print(f"Cont state matrix:\n {A}")
-        print(f"Discrete state matrix:\n {dsys.A}")     
+        print(f"Discrete state matrix:\n {dsys.A}")
         print(f"Cont input matric:\n {B}")
         print(f"Discrete input matric:\n {dsys.B}")
 
         # Get Q and R matrices from W matrix
         W = self.cost.W
-        Q = np.array([
-            [W[0, 0], 0, 0, 0, 0, 0, 0],
-            [0, W[1, 1], 0, 0, 0, 0, 0],
-            [0, 0, W[2, 2], 0, 0, 0, 0],
-            [0, 0, 0, W[3, 3], 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, W[4, 4]]
-        ])
+        Q = np.array(
+            [
+                [W[0, 0], 0, 0, 0, 0, 0, 0],
+                [0, W[1, 1], 0, 0, 0, 0, 0],
+                [0, 0, W[2, 2], 0, 0, 0, 0],
+                [0, 0, 0, W[3, 3], 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, W[4, 4]],
+            ]
+        )
         R = self.cost.W[5, 5]
 
         # Check Conditions for existance of ARE solutio
@@ -342,13 +362,17 @@ class LOcp(AcadosOcp):
         # find Q such that modes on im axis are controllable
         eigenvalues = np.linalg.eigvals(A)
 
-        first_nonzero_index = lambda array: np.flatnonzero(array)[0] if np.any(array) else -1
-        
-        pivot_indeces = np.apply_along_axis(first_nonzero_index, axis=1, arr=ct.ctrb(A, B))
+        first_nonzero_index = lambda array: (
+            np.flatnonzero(array)[0] if np.any(array) else -1
+        )
+
+        pivot_indeces = np.apply_along_axis(
+            first_nonzero_index, axis=1, arr=ct.ctrb(A, B)
+        )
         print(f"Controllability matrix: \n {sp.Matrix(ct.ctrb(dsys.A, dsys.B)).rref()}")
         print(f"Eigenvalues: {eigenvalues}")
-        print(f'System is controllable: {controllable}')
-        print(f'System is stabilizable: ')
+        print(f"System is controllable: {controllable}")
+        print(f"System is stabilizable: ")
         print(f"Controllability of (A.T, Q): {tmp}".format())
         print(f"Solution to ARE exists: {tmp&controllable}")
 
@@ -362,20 +386,19 @@ class LOcp(AcadosOcp):
             return
 
         pr(f"Solution of ARE: {P}")
-        
+
         # Try to find the maximum size set for terminal set while satisfying input constrints
         t_set_problem = cs.Opti()
         x_sym = t_set_problem.variable(self.n_states)
-        t_set_problem.minimize(-1/2*x_sym.T@P@x_sym)
-        t_set_problem.subject_to(K@x_sym<self.max_steering_rate)
-        t_set_problem.subject_to(K@x_sym>-self.max_steering_rate)
-        p_opts = {"expand":True}
+        t_set_problem.minimize(-1 / 2 * x_sym.T @ P @ x_sym)
+        t_set_problem.subject_to(K @ x_sym < self.max_steering_rate)
+        t_set_problem.subject_to(K @ x_sym > -self.max_steering_rate)
+        p_opts = {"expand": True}
         s_opts = {"max_iter": 500, "tol": 10e-16}
-        t_set_problem.solver("ipopt",p_opts,s_opts)
+        t_set_problem.solver("ipopt", p_opts, s_opts)
         solution = t_set_problem.solve()
         state_traj = solution.value(x_sym)
         print(f"Value of c: {1/2*state_traj.T@P@state_traj}")
-        
 
 
 if __name__ == "__main__":
