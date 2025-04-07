@@ -60,7 +60,7 @@ class Dynamics:
 
         # noises for the partial state measurement
         self.measurement_noises = np.array(
-            [0.03, 0.03, 0.01, 0.01, 0.00001, 0.01, 0.0001]
+            [0.03, 0.03, 0.01, 0.01, 0.0001, 0.01, 0.001]
         )
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
@@ -209,4 +209,4 @@ class Dynamics:
         """measure state and add gaussian noise"""
         return (
             self.measurement_matrix @ x
-        ) + self.measurement_noises * self.rng.normal(len(x))
+        )  # + self.measurement_noises * self.rng.normal(len(x))
