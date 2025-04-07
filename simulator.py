@@ -69,16 +69,20 @@ class StepSimulator:
             logging.info("Simulator Started with Nonlinear Model")
             self.ocp = NLOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
+            self.disturbed = False
         elif model == "L":
             logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
+            self.disturbed = False
         elif model == "LPV":
             logging.info("Simulator Started with LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
+            self.disturbed = False
         elif model == "none":
             logging.info("Simulator Starter without controller")
+            self.disturbed = True
         else:
             logging.error("Model not recognized. Please choose 'NL', 'L', or 'LPV'.")
             return
@@ -130,11 +134,13 @@ class StepSimulator:
         self.steering = new_state[7]
         self.steering_disturbance = new_state[indices["steering_dist"]]
 
-    def get_waypoints(self):
-        x = self.pose[0]
-        y = self.pose[1]
-        heading = np.arctan2(self.pose[3], self.pose[2])
-        # print(self.full_state)
+    def get_waypoints(self, x=None, y=None, heading=None):
+        if x is None:
+            x = self.pose[0]
+        if y is None:
+            y = self.pose[1]
+        if heading is None:
+            heading = np.arctan2(self.pose[3], self.pose[2])
         return self.waypoint_generator.request_waypoints(x, y, heading)
 
     def simulate(self, n_steps) -> tuple[np.ndarray, np.ndarray]:
@@ -164,6 +170,64 @@ class StepSimulator:
             simulated_input_trajectory[i, :] = steer
 
         return simulated_state_trajectory, simulated_input_trajectory
+
+    def simulate_of(
+        self, n_steps, initial_state_estimate: np.ndarray = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        simulated_state_trajectory = np.zeros((n_steps, 9))
+        simulated_input_trajectory = np.zeros((n_steps, 1))
+        estimated_state_trajectory = np.zeros((n_steps, 9))
+
+        if initial_state_estimate is None:
+            initial_pose_est = [-1.0, 0.0, 1.0, 0.0]
+            initial_velocity_est = [8.0, 0.0, 0.0]
+            initial_steering_angle_est = [0.1]
+            initial_steering_disturbance_est = [0.0]
+            initial_state_estimate = (
+                initial_pose_est
+                + initial_velocity_est
+                + initial_steering_angle_est
+                + initial_steering_disturbance_est
+            )
+
+        SE = CarEKF(self.dt, self.s, inital_state=initial_state_estimate)
+
+        for i in range(n_steps):
+
+            waypoints, speeds, progress, heading_derotation = self.get_waypoints()
+            estimated_IC = SE.estimate_red_state()
+            status, trajectory, inputs = self.MPC_controller.optimize(
+                estimated_IC, waypoints, speeds
+            )
+            steer = trajectory[1, 6]
+
+            steer = inputs[0]
+            print("steer: ", steer)
+
+            new_state = self.dynamics.rk4_integraton(self.full_state, steer)
+
+            self.full_state = new_state
+            self.planned_references = waypoints
+            self.planned_trajectory = trajectory
+
+            SE.time_update(steer)
+            print(
+                "measured_state: ",
+                self.dynamics.measure_state_noiseless(self.full_state),
+            )
+            SE.measurement_update(
+                self.dynamics.measure_state_noiseless(self.full_state)
+            )
+
+            estimated_state_trajectory[i, :] = SE.estimate_full_state()
+            simulated_state_trajectory[i, :] = new_state
+            simulated_input_trajectory[i, :] = steer
+
+        return (
+            simulated_state_trajectory,
+            simulated_input_trajectory,
+            estimated_state_trajectory,
+        )
 
     def step(self):
         plt.clf()
@@ -244,9 +308,14 @@ class StepSimulator:
             simulated_input_trajectory[i, :] = u[i]
 
             SE.time_update(u[i])
-            print("measured_state: ", self.dynamics.measure_state(self.full_state))
-            SE.measurement_update(self.dynamics.measure_state(self.full_state))
-            estimated_state_trajectory[i, :] = SE.x_est
+            print(
+                "measured_state: ",
+                self.dynamics.measure_state_noiseless(self.full_state),
+            )
+            SE.measurement_update(
+                self.dynamics.measure_state_noiseless(self.full_state)
+            )
+            estimated_state_trajectory[i, :] = SE.estimate_full_state()
 
         return (
             simulated_state_trajectory,

@@ -205,8 +205,11 @@ class Dynamics:
         """measurement measures everything but vy, linear measurement model, so"""
         return self.measurement_matrix
 
-    def measure_state(self, x):
+    def measure_state_noise(self, x):
         """measure state and add gaussian noise"""
         return (
             self.measurement_matrix @ x
-        )  # + self.measurement_noises * self.rng.normal(len(x))
+        ) + self.measurement_noises * self.rng.normal(len(x))
+
+    def measure_state_noiseless(self, x):
+        return self.measurement_matrix @ x

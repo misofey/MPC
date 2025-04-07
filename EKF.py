@@ -46,11 +46,18 @@ class CarEKF:
         self.x_est = self.x_est + gain @ (x_meas - self.measure_x_est())
         self.P = self.P - gain @ self.dynamics.measurement_matrix @ self.P
 
-    def estimated_state(self):
+    def estimate_full_state(self):
         return self.x_est
 
     def measure_x_est(self):
         return self.dynamics.measurement_matrix @ self.x_est
+
+    def estimate_red_state(self):
+        # red state is codeword for the states which are used by the mpc solver
+        state_indices = [0, 1, 2, 3, 5, 6, 7]
+        if self.disturbed:
+            state_indices.append(8)
+        return self.x_est[state_indices]
 
     def kalman_gain(self):
         left_side = (
