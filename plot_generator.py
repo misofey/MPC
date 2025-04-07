@@ -532,7 +532,7 @@ def plot_ekf_convergence():
     sim = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
     )
-    u = np.sin(np.linspace(0, Tf, N))
+    u = 0.1 * np.sin(np.linspace(0, Tf, N))
     state, input, estimate = sim.lsim(u, N)
 
     num_states = state.shape[1]

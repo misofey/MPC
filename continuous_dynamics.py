@@ -9,6 +9,7 @@ indices = {
     "vy": 5,
     "r": 6,
     "steering": 7,
+    "steering_dist": 8,
 }
 
 
@@ -30,25 +31,36 @@ class Dynamics:
             self.steering_angle_disturbance = 0.01
             self.nx = 9
             self.disturbed = True
+
+            self.measurement_matrix = np.array(
+                [
+                    [1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 1, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 0],
+                ]
+            )
         else:
             self.steering_angle_disturbance = 0
             self.nx = 8
             self.disturbed = False
-
-        self.measurement_matrix = np.array(
-            [
-                [1, 0, 0, 0, 0, 0, 0, 0],
-                [0, 1, 0, 0, 0, 0, 0, 0],
-                [0, 0, 1, 0, 0, 0, 0, 0],
-                [0, 0, 0, 1, 0, 0, 0, 0],
-                [0, 0, 0, 0, 1, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 1, 0],
-                [0, 0, 0, 0, 0, 0, 0, 1],
-            ]
-        )
+            self.measurement_matrix = np.array(
+                [
+                    [1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1],
+                ]
+            )
 
         # noises for the partial state measurement
-        self.measurement_noises = np.array([0.03, 0.03, 0.01, 0.01, 0.00001, 0.01, 0.1])
+        self.measurement_noises = np.array([0.03, 0.03, 0.01, 0.01, 0.001, 0.01, 0.001])
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
 
@@ -192,6 +204,4 @@ class Dynamics:
         """measure state and add gaussian noise"""
         return (
             self.measurement_matrix @ x
-        )  # + self.measurement_noises * self.rng.normal(
-        #     len(x)
-        # )
+        ) + self.measurement_noises * self.rng.normal(len(x))
