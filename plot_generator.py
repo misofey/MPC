@@ -23,7 +23,7 @@ starting_state = [
     0.0,
     0.0,  # starting velocity
     -0.1,  # starting steering angle
-    0.0,  # starting steering disturbance
+    0.1,  # starting steering disturbance
 ]
 
 state_names = [

@@ -24,7 +24,9 @@ class CarEKF:
 
         print("number of state estimated are: ", self.nx)
         self.P = np.diag(np.ones(self.nx))  # bad initial state estimate
-        self.Q = np.zeros((self.nx, self.nx))  # assume no process noise
+        self.Q = np.diag(
+            [0.1, 0.1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.0]
+        )  # assume no process noise
         self.R = np.diag(self.dynamics.measurement_noises)
 
         self.x_real = np.zeros(self.nx)

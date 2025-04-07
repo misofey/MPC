@@ -28,7 +28,6 @@ class Dynamics:
         self.dt = dt
 
         if disturbance:
-            self.steering_angle_disturbance = 0.01
             self.nx = 9
             self.disturbed = True
 
@@ -60,7 +59,9 @@ class Dynamics:
             )
 
         # noises for the partial state measurement
-        self.measurement_noises = np.array([0.03, 0.03, 0.01, 0.01, 0.001, 0.01, 0.001])
+        self.measurement_noises = np.array(
+            [0.03, 0.03, 0.01, 0.01, 0.00001, 0.01, 0.0001]
+        )
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
 
