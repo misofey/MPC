@@ -42,6 +42,7 @@ class Dynamics:
                     [0, 0, 0, 0, 0, 0, 0, 1, 0],
                 ]
             )
+            print("Dynamics are with disturbance")
         else:
             self.steering_angle_disturbance = 0
             self.nx = 8
@@ -57,6 +58,7 @@ class Dynamics:
                     [0, 0, 0, 0, 0, 0, 0, 1],
                 ]
             )
+            print("Dynamics are without disturbance")
 
         # noises for the partial state measurement
         self.measurement_noises = np.array(

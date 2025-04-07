@@ -4,6 +4,7 @@ import casadi as cs
 import numpy as np
 import control as ct
 import sympy as sp
+from pprint import pprint as pr
 import yaml
 import logging
 
@@ -37,9 +38,11 @@ class OFLOcp(AcadosOcp):
         # Simulation constants
         self.N = N
         self.Tf = Tf
-        self.n_states = 7
+        self.n_states = 6
         self.n_inputs = 1
         self.n_outputs = 5
+        self.n_parameters = 1
+        self.n_disturbances = 1
         # Dynamics constants
         self.m = params["model"]["m"]  # Car mass [kg]
         self.I_z = params["model"]["I_z"]  # TODO: unit
@@ -52,18 +55,18 @@ class OFLOcp(AcadosOcp):
 
         self.max_steering = params["model"]["max_steering_angle"]
         self.max_steering_rate = (
-            3 * self.max_steering
+            2 * self.max_steering
         )  # one second from full left to full right
 
         # Linearization point
-        self.x_lin_point = np.array([0, 0, 0, 0, 0, 0, 0])
+        self.x_lin_point = np.array([0, 0, 0, 0, 0, 0])
         self.u_lin_point = np.array([0])
         self.p_lin_point = np.array([15.0])
         # Model setup
         self.model = AcadosModel()
 
         # Model name
-        self.model.name = "LinearDynamicBicycleModel"
+        self.model.name = "NonlinearDynamicBycicleModel"
 
         ### Decision variables ###
         self.model.u = cs.MX.sym("u", self.n_inputs)
@@ -71,7 +74,7 @@ class OFLOcp(AcadosOcp):
         self.model.xdot = cs.MX.sym("xdot", self.n_states)
 
         ### Parameters ###
-        self.model.p = cs.MX.sym("p", 1)
+        self.model.p = cs.MX.sym("p", self.n_parameters + self.n_disturbances)
 
         # Set model dynamics
         self.get_dynamics()
@@ -120,7 +123,6 @@ class OFLOcp(AcadosOcp):
         v_y = self.model.x[3, 0]
         omega = self.model.x[4, 0]
         steering_angle = self.model.x[5, 0]
-        steering_disturbance = self.model.x[6, 0]
 
         steering_rate = self.model.u[0, 0]
 
@@ -138,7 +140,7 @@ class OFLOcp(AcadosOcp):
             / (self.m * v_x + 0.001)
             * omega
         )
-        d_v_y -= self.Cf / self.m * (steering_angle + steering_disturbance)
+        d_v_y -= self.Cf / self.m * steering_angle
 
         d_omega = (
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x + 0.001) * v_y
@@ -148,24 +150,23 @@ class OFLOcp(AcadosOcp):
             / (self.I_z * v_x + 0.001)
             * omega
         )
-        d_omega -= (
-            self.lf * self.Cf / self.I_z * (steering_angle + steering_disturbance)
-        )
+        d_omega -= self.lf * self.Cf / self.I_z * steering_angle
 
         d_steering = steering_rate
-        d_disturbance = 0
 
-        self.f = cs.vertcat(
-            d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering, d_disturbance
-        )
+        self.f = cs.vertcat(d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering)
 
-        # TODO: naming is shit
         self.A = cs.jacobian(self.f, self.model.x)
         self.A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
         self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
         self.B = cs.jacobian(self.f, self.model.u)
         self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
         self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p)
+
+        self.B_d = np.ones((self.n_states, self.n_disturbances))
+        self.C_d = np.eye(self.n_outputs, self.n_disturbances)
+
+        self.f += self.B_d @ self.model.p[self.n_parameters :]
 
     def set_discrete_dynamics(self, type: str = "fe") -> None:
 
@@ -234,13 +235,12 @@ class OFLOcp(AcadosOcp):
     def set_cost(self) -> None:
 
         # Output selection matrix
-        Vx = np.eye(self.n_states + self.n_inputs - 1, self.n_states)
-        Vx[6, 6] = 0  # remove disturbance
+        Vx = np.eye(self.n_states + self.n_inputs, self.n_states)
 
         self.cost.Vx = Vx
         self.cost.Vx_e = Vx
 
-        Vu = np.zeros((self.n_states + self.n_inputs - 1, self.n_inputs))
+        Vu = np.zeros((self.n_states + self.n_inputs, self.n_inputs))
         Vu[-1, 0] = 1
         self.cost.Vu = Vu
         self.cost.Vu_e = Vu
@@ -254,25 +254,25 @@ class OFLOcp(AcadosOcp):
         q = self.params["controller"]["q"]
         r = self.params["controller"]["r"]
         self.cost.W = np.zeros(
-            (self.n_states + self.n_inputs - 1, self.n_states + self.n_inputs - 1)
+            (self.n_states + self.n_inputs, self.n_states + self.n_inputs)
         )
-        self.cost.W[: self.n_states - 1, : self.n_states - 1] = Q * q
-        self.cost.W[self.n_states - 1 :, self.n_states - 1 :] = R * r
+        self.cost.W[: self.n_states, : self.n_states] = Q * q
+        self.cost.W[self.n_states :, self.n_states :] = R * r
         self.cost.W_e = self.cost.W
 
         # Reference trajectory
-        self.cost.yref = np.zeros(self.n_states - 1 + self.n_inputs)
-        self.cost.yref_e = np.zeros(self.n_states - 1 + self.n_inputs)
+        self.cost.yref = np.zeros(self.n_states + self.n_inputs)
+        self.cost.yref_e = np.zeros(self.n_states + self.n_inputs)
 
         # Initial parameter trajectory
-        self.parameter_values = np.array([9.0])
+        self.parameter_values = np.array([9.0, 0.5])
 
     def set_terminal_cost(self) -> None:
         self.cost.W_e = np.zeros(
             (self.n_states + self.n_inputs, self.n_states + self.n_inputs)
         )
         # Terminal constraint does not constrain x position and input
-        self.cost.W_e[1:-2, 1:-2] = 1 / 2 * self.P
+        self.cost.W_e[1:-1, 1:-1] = 1 / 2 * self.P
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -294,10 +294,10 @@ class OFLOcp(AcadosOcp):
             self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
-        self.solver_options.tol = 1e-4
+        self.solver_options.tol = 1e-1
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
-        self.solver_options.print_level = 0
+        self.solver_options.print_level = 3
         # ocp.solver_options.nlp_solver_exact_hessian = True
         self.solver_options.qp_solver_warm_start = 0
         self.solver_options.regularize_method = "MIRROR"
@@ -308,14 +308,14 @@ class OFLOcp(AcadosOcp):
         references[:, :3] = np.concatenate((waypoints[:, :2], waypoints[:, 3:]), axis=1)
         return references
 
-    def optimize(self, x0, waypoints, p):
+    def optimize(self, x0, waypoints, p, d_hat=np.array([[1.0]])):
         # print("x0: ", x0)
         starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
         ref_points = self.waypoints_to_references(waypoints)
 
         for i in range(self.N):
             self.solver.cost_set(i, "yref", ref_points[i, :])
-            self.solver.set(i, "p", p[i])
+            self.solver.set(i, "p", np.concatenate((p[i].reshape((1, -1)), d_hat)))
 
         x_ref_e = np.array(
             [ref_points[self.N, 1], ref_points[self.N, 3], 0, 0, ref_points[self.N, 4]]
@@ -333,7 +333,8 @@ class OFLOcp(AcadosOcp):
 
         runtime = self.solver.get_stats("time_tot")
         self.metrics["runtime"].append(runtime)
-        logging.info(f"Solver runtime: {runtime*1000} ms")
+
+        logging.info(f"Solver runtime: {runtime * 1000} ms")
 
         # fish out the results from the solver
         trajectory = np.zeros([self.N + 1, self.n_states])
@@ -345,7 +346,7 @@ class OFLOcp(AcadosOcp):
 
         logging.debug(f"Steering rate: \n {inputs[:15]}")
         logging.debug(f"Steering angle: \n {trajectory[:15, -1]}")
-        logging.debug(f"Error: {trajectory[:15, 2]-waypoints[:15, 3]}")
+        logging.debug(f"Error: {trajectory[:15, 2] - waypoints[:15, 3]}")
 
         status = 0
         # Reconstruct trajectory in the original 7 state form
@@ -400,11 +401,9 @@ class OFLOcp(AcadosOcp):
             dsys = ct.ss(A, B, C, D, self.Tf / self.N)
             dsys = ct.sample_system(dsys, self.Tf / self.N)
 
-        A = A[:-1, :-1]
-        B = B[:-1]
         print(f"Cont state matrix:\n {A}")
         print(f"Cont input matric:\n {B}")
-        print(f"Sampling time: {self.Tf/self.N}")
+        print(f"Sampling time: {self.Tf / self.N}")
 
         # Get Q and R matrices from W matrix
         W = self.cost.W
@@ -439,7 +438,7 @@ class OFLOcp(AcadosOcp):
         print(f"System is controllable: {controllable}")
         print(f"System is stabilizable: ")
         print(f"Controllability of (A.T, Q): {tmp}".format())
-        print(f"Solution to ARE exists: {tmp&controllable}")
+        print(f"Solution to ARE exists: {tmp & controllable}")
 
         ### TERMINAL COST ###
         # STEP 1: Obtain terminal cost for (non reference tracking) quadratic cost
