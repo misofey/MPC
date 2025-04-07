@@ -27,6 +27,7 @@ import os
 from NLMPC import NLOcp
 from LMPC2 import LOcp
 from LPVMPC import LPVOcp
+from OFLMPC import OFLOcp
 from EKF import CarEKF
 from continuous_dynamics import Dynamics, indices
 
@@ -77,6 +78,11 @@ class StepSimulator:
             self.disturbed = False
         elif model == "LPV":
             logging.info("Simulator Started with LPV Model")
+            self.ocp = LPVOcp(self.N, self.Tf)
+            self.MPC_controller = self.ocp
+            self.disturbed = False
+        elif model == "OFL":
+            logging.info("Simulator Started with offset-free output feedback LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
             self.disturbed = False
