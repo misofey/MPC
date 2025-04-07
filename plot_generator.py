@@ -25,6 +25,18 @@ starting_state = [
     0.0,  # starting steering angle
 ]
 
+state_names = [
+    "pos_x",
+    "pos_y",
+    "heading_cos",
+    "heading_sin",
+    "vx",
+    "vy",
+    "r",
+    "steer",
+    "steer_dist",
+]
+
 
 def plot_n_tuning():
 
@@ -514,6 +526,79 @@ def compute_performance_metrics(states: list, models: list = ["unkown"]):
     print(df)
 
 
+def plot_ekf_convergence():
+    N = 1000
+    Tf = dt * N
+    sim = StepSimulator(
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
+    )
+    u = np.sin(np.linspace(0, Tf, N))
+    state, input, estimate = sim.lsim(u, N)
+
+    num_states = state.shape[1]
+    num_subplots = num_states + 1  # Include input subplot
+    fig, axes = plt.subplots(
+        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+    )
+
+    time = np.linspace(0, Tf, N)
+    colors = [
+        cmap(i / num_subplots) for i in range(num_subplots)
+    ]  # Use the cmap variable for colors
+
+    results = []  # To store metrics for each state
+
+    # Plot each state on a separate subplot
+    for i in range(0, num_states):
+        y = state[:, i]
+        axes[i].plot(
+            time,
+            y,
+            label=f"{state_names[i]} truth",
+            linewidth=2,
+            color=colors[i],
+        )
+        axes[i].plot(
+            time,
+            estimate[:, i],
+            label=f"{state_names[i]} estimate",
+            linewidth=2,
+            linestyle="--",
+            color=colors[i],
+        )
+        axes[i].set_ylabel(state_names[i])
+        axes[i].legend(
+            loc="upper right", fontsize=10, frameon=True
+        )  # Place labels in the same corner
+        axes[i].grid(True)
+
+    # Plot the input on the last subplot
+    axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
+    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_ylabel("Input Amplitude")
+    axes[-1].legend(
+        loc="upper right", fontsize=10, frameon=True
+    )  # Place labels in the same corner
+    axes[-1].grid(True)
+
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig("plots/all_state_response.png", dpi=300, bbox_inches="tight")
+
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results)
+    print(df)
+
+    # Save the table to a CSV file
+    df.to_csv("plots/state_metrics.csv", index=False)
+
+    plt.show()
+
+
 if __name__ == "__main__":
 
-    plot_compare_controllers()
+    # plot_compare_controllers()
+    plot_ekf_convergence()
