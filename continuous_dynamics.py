@@ -88,6 +88,10 @@ class Dynamics:
 
     def single_track_model(self, x, u) -> np.ndarray:
         x_dot = np.zeros_like(x)
+        if self.disturbed:
+            steering_disturbance = x[indices["steering_dist"]]
+        else:
+            steering_disturbance = 0
         x_dot[0] = x[2] * x[4] - x[3] * x[5]  # px
         x_dot[1] = x[3] * x[4] + x[2] * x[5]  # py
         x_dot[2] = -x[6] * x[3]  # cos_head
@@ -97,40 +101,42 @@ class Dynamics:
             -(self.Cf + self.Cr) / (self.m * x[4]) * x[5]
             + (-x[4] + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * x[4])) * x[6]
         ) - self.Cf / self.m * (
-            x[7]
+            x[7] + steering_disturbance
         )  # vy
         x_dot[6] = (
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * x[4]) * x[5]
             - (self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
             / (self.I_z * x[4])
             * x[6]
-            - (self.Cf * self.lf) / self.I_z * (x[7])
+            - (self.Cf * self.lf) / self.I_z * (x[7] + steering_disturbance)
         )  # r
-        print("disturbance is: ", self.steering_angle_disturbance)
-        print("disturbed: ", self.disturbed)
         x_dot[7] = u
+
+        if self.disturbed:
+            x_dot[8] = 0  # disturbance derivative
         return x_dot
 
     def rk4_integraton(self, xk, u) -> np.ndarray:
-        # k1 = self.single_track_model(xk, u)
-        # k2 = self.single_track_model(xk + self.dt / 2 * k1, u)
-        # k3 = self.single_track_model(xk + self.dt / 2 * k2, u)
-        # k4 = self.single_track_model(xk + self.dt * k3, u)
-        #
-        # return xk + self.dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        return xk + self.dt * self.single_track_model(xk, u)
+        k1 = self.single_track_model(xk, u)
+        k2 = self.single_track_model(xk + self.dt / 2 * k1, u)
+        k3 = self.single_track_model(xk + self.dt / 2 * k2, u)
+        k4 = self.single_track_model(xk + self.dt * k3, u)
+
+        return xk + self.dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        # return xk + self.dt * self.single_track_model(xk, u)
 
     def steering_dist_jacobian(self):
-        np.array(
+        return np.array(
             [
-                [0],
-                [0],
-                [0],
-                [0],
-                [0],
-                [-self.Cf / self.m],
-                [-(self.Cf * self.lf) / self.I_z],
-                [0],
+                0,
+                0,
+                0,
+                0,
+                0,
+                -self.Cf / self.m,
+                -(self.Cf * self.lf) / self.I_z,
+                0,
+                0,
             ]
         )
 
@@ -165,7 +171,7 @@ class Dynamics:
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z) * x[5] * np.log(x[4])
         )
         tf21dvy = (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * x[4])
-        tfx22dvx = (
+        tf22dvx = (
             (self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
             / self.I_z
             * x[6]
@@ -181,18 +187,16 @@ class Dynamics:
         A[2, :8] = np.array([0, 0, 0, -x[6], 0, 0, -x[3], 0])
         A[3, :8] = np.array([0, 0, x[6], 0, 0, 0, x[2], 0])
         A[4, :8] = np.array([0, 0, 0, 0, 0, 0, 0, 0])
-        A[5, :8] = np.array([0, 0, 0, 0, 0, tf11dvy, tf12dr, tf1ddelta])
-        A[6, :8] = np.array(
-            [0, 0, 0, 0, tf21dvx + tfx22dvx, tf21dvy, tf22dr, tf2ddelta]
-        )
+        A[5, :8] = np.array([0, 0, 0, 0, tf11dvx + tf12dvx, tf11dvy, tf12dr, tf1ddelta])
+        A[6, :8] = np.array([0, 0, 0, 0, tf21dvx + tf22dvx, tf21dvy, tf22dr, tf2ddelta])
         A[7, :8] = np.array([0, 0, 0, 0, 0, 0, 0, 0])
 
         B = np.zeros(nx)
         B[7] = 1
         if self.disturbed:
-            A = np.vstack((A, self.steering_dist_jacobian()))
-            A = np.hstack((A, np.zeros((A.shape(0), 1))))
-            F = np.vstack((A, B))
+            A[:, 8] = self.steering_dist_jacobian()
+            # A = np.vstack((A, np.zeros((1, A.shape[0]))))
+            # F = np.vstack((A, B))
 
         return A, B, self.dt * A + np.eye(nx)
 

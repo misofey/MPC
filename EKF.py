@@ -11,12 +11,13 @@ class CarEKF:
         inital_state=None,
     ):
         if inital_state is None:
-            self.x_est = np.zeros(8)
+            self.x_est = np.zeros(9)
         else:
             self.x_est = np.array(inital_state)
 
         self.dynamics = Dynamics(dt, disturbance)
-        if disturbance:
+        self.disturbed = disturbance
+        if self.disturbed:
             self.nx = 9
         else:
             self.nx = 8
@@ -38,7 +39,7 @@ class CarEKF:
         self.P = F @ self.P @ F.T + self.Q
 
     def measurement_update(self, x_meas):
-        assert len(x_meas) == self.nx - 1
+        assert len(x_meas) == self.nx - 1 - self.disturbed
         gain = self.kalman_gain()
         self.x_est = self.x_est + gain @ (x_meas - self.measure_x_est())
         self.P = self.P - gain @ self.dynamics.measurement_matrix @ self.P

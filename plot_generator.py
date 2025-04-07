@@ -21,8 +21,9 @@ starting_state = [
     0,  # starting pose
     8.0,
     0.0,
-    0.0,  # starting veloctiy
-    0.0,  # starting steering angle
+    0.0,  # starting velocity
+    -0.1,  # starting steering angle
+    0.0,  # starting steering disturbance
 ]
 
 state_names = [
@@ -495,7 +496,7 @@ def compute_time_metrics(time_data_list: list):
     return df
 
 
-def compute_performance_metrics(states: list, models: list = ["unkown"]):
+def compute_performance_metrics(states: list, models: list = ["unknown"]):
     results = []
     num_states = states[0].shape[1]
     for i in range(num_states):
@@ -533,6 +534,8 @@ def plot_ekf_convergence():
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
     )
     u = 0.1 * np.sin(np.linspace(0, Tf, N))
+    u = 0.1 * np.ones(N)
+    u[10:] = 0
     state, input, estimate = sim.lsim(u, N)
 
     num_states = state.shape[1]

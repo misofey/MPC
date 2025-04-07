@@ -28,7 +28,7 @@ from NLMPC import NLOcp
 from LMPC2 import LOcp
 from LPVMPC import LPVOcp
 from EKF import CarEKF
-from continuous_dynamics import Dynamics
+from continuous_dynamics import Dynamics, indices
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -87,21 +87,24 @@ class StepSimulator:
             starting_pose = [15.0, 0.1, 1.0, 0]
             starting_velocity = [8.0, 0.0, 0.0]
             starting_steering_angle = [0.0]
+            starting_steering_disturbance = [0.0]
         else:
             starting_pose = starting_state[:4]
             starting_velocity = starting_state[4:7]
             starting_steering_angle = starting_state[7]
+            starting_steering_disturbance = starting_state[indices["steering_dist"]]
 
         self.pose = np.array(starting_pose)
         self.vel = np.array(starting_velocity)
         self.steering = np.array(starting_steering_angle)
+        self.steering_disturbance = np.array(starting_steering_disturbance)
 
         self.waypoint_generator = StepPlanner(
             target_vel=starting_velocity[0], Nt=self.N, dt=self.dt
         )
         self.planned_references = np.zeros([self.N, 4])
 
-        self.dynamics = Dynamics(self.dt, disturbance=False)
+        self.dynamics = Dynamics(self.dt, disturbance=True)
         print("Simulator created!")
 
         self.figures = figures
@@ -112,7 +115,9 @@ class StepSimulator:
 
     @property
     def full_state(self):
-        return np.hstack((self.pose, self.vel, self.steering))
+        return np.hstack(
+            (self.pose, self.vel, self.steering, self.steering_disturbance)
+        )
 
     @property
     def red_state(self):
@@ -123,6 +128,7 @@ class StepSimulator:
         self.pose = new_state[:4]
         self.vel = new_state[4:7]
         self.steering = new_state[7]
+        self.steering_disturbance = new_state[indices["steering_dist"]]
 
     def get_waypoints(self):
         x = self.pose[0]
@@ -133,7 +139,7 @@ class StepSimulator:
 
     def simulate(self, n_steps) -> tuple[np.ndarray, np.ndarray]:
 
-        simulated_state_trajectory = np.zeros((n_steps, 8))
+        simulated_state_trajectory = np.zeros((n_steps, 9))
         simulated_input_trajectory = np.zeros((n_steps, 1))
 
         for i in range(n_steps):
@@ -214,19 +220,23 @@ class StepSimulator:
         if isinstance(u, float):
             u = np.ones(n_steps) * u
 
-        simulated_state_trajectory = np.zeros((n_steps, 8))
+        simulated_state_trajectory = np.zeros((n_steps, 9))
         simulated_input_trajectory = np.zeros((n_steps, 1))
-        estimated_state_trajectory = np.zeros((n_steps, 8))
+        estimated_state_trajectory = np.zeros((n_steps, 9))
 
         if initial_state_estimate is None:
             initial_pose_est = [-1.0, 0.0, 1.0, 0.0]
             initial_velocity_est = [8.0, 0.0, 0.0]
             initial_steering_angle_est = [0.1]
+            initial_steering_disturbance_est = [0.0]
             initial_state_estimate = (
-                initial_pose_est + initial_velocity_est + initial_steering_angle_est
+                initial_pose_est
+                + initial_velocity_est
+                + initial_steering_angle_est
+                + initial_steering_disturbance_est
             )
 
-        SE = CarEKF(self.dt, False, inital_state=initial_state_estimate)
+        SE = CarEKF(self.dt, True, inital_state=initial_state_estimate)
 
         for i in range(n_steps):
             self.dynamics_step(u[i])
@@ -259,8 +269,9 @@ if __name__ == "__main__":
             0,  # starting pose
             8.0,
             0.0,
-            0.0,  # starting veloctiy
+            0.0,  # starting velocity
             0.0,  # starting steering angle
+            0.0,  # starting steering disturbance
         ]
 
         simulator = SkidpadSimulator(N, Tf, acados_print_level, starting_state)
@@ -300,7 +311,7 @@ if __name__ == "__main__":
             0,  # starting pose
             8.0,
             0.0,
-            0.0,  # starting veloctiy
+            0.0,  # starting velocity
             0.0,  # starting steering angle
         ]
 
