@@ -19,11 +19,12 @@ starting_state = [
     0.0,
     1.0,
     0,  # starting pose
-    8.0,
-    0.0,
-    0.0,  # starting velocity
-    0.0,  # starting steering angle
-    0.05,  # starting steering disturbance
+    14.0,
+    0.1,
+    0.1,  # starting velocity
+    -0.1,  # starting steering angle
+    0.0,  # starting steering disturbance
+    10.0,  # starting side force disturbance
 ]
 
 state_names = [
@@ -35,7 +36,8 @@ state_names = [
     "vy",
     "r",
     "steer",
-    "steer_dist",
+    "steering_dist",
+    "force_dist",
 ]
 
 
@@ -528,14 +530,14 @@ def compute_performance_metrics(states: list, models: list = ["unknown"]):
 
 
 def plot_ekf_convergence():
-    N = 1000
+    N = 5000
     Tf = dt * N
     sim = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
     )
     u = 0.1 * np.sin(np.linspace(0, Tf, N))
     u = 0.1 * np.ones(N)
-    u[10:] = 0
+    u[100:] = 0
     state, input, estimate = sim.lsim(u, N)
 
     num_states = state.shape[1]
@@ -715,8 +717,8 @@ def plot_all_states_of():
 if __name__ == "__main__":
 
     # plot_compare_controllers()
-    # plot_ekf_convergence()
-    plot_all_states_of()
+    plot_ekf_convergence()
+    # plot_all_states_of()
     # plot_all_state_response()
     # plot_q_tuning()
     # plot_compare_controllers()

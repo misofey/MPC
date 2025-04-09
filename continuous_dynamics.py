@@ -10,6 +10,7 @@ indices = {
     "r": 6,
     "steering": 7,
     "steering_dist": 8,
+    "force_dist": 9,
 }
 
 
@@ -28,23 +29,22 @@ class Dynamics:
         self.dt = dt
 
         if disturbance:
-            self.nx = 9
+            self.nx = 10
             self.disturbed = True
 
             self.measurement_matrix = np.array(
                 [
-                    [1, 0, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 1, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 1, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 1, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 1, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 1, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 0, 1, 0],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
                 ]
             )
             print("Dynamics are with disturbance")
         else:
-            self.steering_angle_disturbance = 0
             self.nx = 8
             self.disturbed = False
             self.measurement_matrix = np.array(
@@ -61,9 +61,7 @@ class Dynamics:
             print("Dynamics are without disturbance")
 
         # noises for the partial state measurement
-        self.measurement_noises = np.array(
-            [0.03, 0.03, 0.01, 0.01, 0.0001, 0.01, 0.001]
-        )
+        self.measurement_noises = np.array([0.3, 0.3, 0.03, 0.03, 0.0001, 0.01, 0.001])
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
 
@@ -101,10 +99,13 @@ class Dynamics:
         x_dot[3] = x[6] * x[2]  # sin_head
         x_dot[4] = 0  # vx
         x_dot[5] = (
-            -(self.Cf + self.Cr) / (self.m * x[4]) * x[5]
-            + (-x[4] + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * x[4])) * x[6]
-        ) - self.Cf / self.m * (
-            x[7] + steering_disturbance
+            (
+                -(self.Cf + self.Cr) / (self.m * x[4]) * x[5]
+                + (-x[4] + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * x[4]))
+                * x[6]
+            )
+            - self.Cf / self.m * (x[7] + steering_disturbance)
+            + x[9]
         )  # vy
         x_dot[6] = (
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * x[4]) * x[5]
@@ -116,7 +117,8 @@ class Dynamics:
         x_dot[7] = u
 
         if self.disturbed:
-            x_dot[8] = 0  # disturbance derivative
+            x_dot[8] = 0  # disturbance derivatives are zero
+            x_dot[9] = 0
         return x_dot
 
     def rk4_integraton(self, xk, u) -> np.ndarray:
@@ -140,20 +142,23 @@ class Dynamics:
                 -(self.Cf * self.lf) / self.I_z,
                 0,
                 0,
+                0,
             ]
         )
 
     def side_force_dist_jacobian(self):
-        np.array(
+        return np.array(
             [
-                [0],
-                [0],
-                [0],
-                [0],
-                [0],
-                [1],
-                [0],
-                [0],
+                0,
+                0,
+                0,
+                0,
+                0,
+                1 / self.m,
+                0,
+                0,
+                0,
+                0,
             ]
         )
 
@@ -198,8 +203,7 @@ class Dynamics:
         B[7] = 1
         if self.disturbed:
             A[:, 8] = self.steering_dist_jacobian()
-            # A = np.vstack((A, np.zeros((1, A.shape[0]))))
-            # F = np.vstack((A, B))
+            A[:, 9] = self.side_force_dist_jacobian()
 
         return A, B, self.dt * A + np.eye(nx)
 
