@@ -8,6 +8,8 @@ from pprint import pprint as pr
 import yaml
 import logging
 
+from continuous_dynamics import indices
+
 
 class OFLOcp(AcadosOcp):
 
@@ -54,9 +56,9 @@ class OFLOcp(AcadosOcp):
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
         self.max_steering = params["model"]["max_steering_angle"]
-        self.max_steering_rate = (
-            2 * self.max_steering
-        )  # one second from full left to full right
+        self.max_steering_rate = params["model"][
+            "max_steering_rate"
+        ]  # one second from full left to full right
 
         # Linearization point
         self.x_lin_point = np.array([0, 0, 0, 0, 0, 0])
@@ -163,7 +165,9 @@ class OFLOcp(AcadosOcp):
         self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
         self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p)
 
-        self.B_d = np.ones((self.n_states, self.n_disturbances))
+        # self.B_d = np.ones((self.n_states, self.n_disturbances))
+        self.B_d = np.zeros((self.n_states, self.n_disturbances))
+        self.B_d[3, 0] = 1 / self.m
         self.C_d = np.eye(self.n_outputs, self.n_disturbances)
 
         self.f += self.B_d @ self.model.p[self.n_parameters :]
@@ -294,7 +298,7 @@ class OFLOcp(AcadosOcp):
             self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
-        self.solver_options.tol = 1e-1
+        self.solver_options.tol = 1e-6
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
         self.solver_options.print_level = 3

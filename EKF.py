@@ -1,6 +1,6 @@
 import numpy as np
 import scipy as sp
-from continuous_dynamics import Dynamics
+from continuous_dynamics import Dynamics, indices
 
 
 class CarEKF:
@@ -23,9 +23,11 @@ class CarEKF:
             self.nx = 8
 
         print("number of state estimated are: ", self.nx)
-        self.P = np.diag(np.ones(self.nx))  # bad initial state estimate
+        # self.P = np.diag(np.ones(self.nx))  # bad initial state estimate
+
+        self.P = np.diag([1, 1, 1, 1, 1, 10.0, 1.0, 1.0, 0.0, 1000000])
         self.Q = np.diag(
-            [0.05, 0.05, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.0, 100.1]
+            [0.05, 0.05, 0.01, 0.01, 0.001, 0.1, 0.01, 0.01, 0.0, 1.1]
         )  # assume no process noise
         self.R = np.diag(self.dynamics.measurement_noises)
 
@@ -37,7 +39,7 @@ class CarEKF:
         x_dot = self.dynamics.single_track_model(self.x_est, u)
         A, B, F = self.dynamics.jacobian_forward_euler(self.x_est)
         self.x_est = x_dot * self.dt + self.x_est
-        print("covariance is: ", self.P)
+        # print("covariance is: ", self.P)
         self.P = F @ self.P @ F.T + self.Q
 
     def measurement_update(self, x_meas):

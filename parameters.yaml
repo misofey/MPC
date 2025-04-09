@@ -48,7 +48,7 @@ model:
   Cr: null
   I_z: 294
   m: 180
-  max_steering_angle: 0.4
+  max_steering_angle: 0.3
   max_steering_rate: 1.6
   wbase: 1.53
   x_cg: 0.57

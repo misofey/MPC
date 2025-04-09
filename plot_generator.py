@@ -1,3 +1,4 @@
+from continuous_dynamics import indices
 from simulator import StepSimulator
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,14 +16,14 @@ cmap = sns.color_palette(
 dt = 0.01
 sim_len = 300
 starting_state = [
-    -1.0,
+    -5.0,
     0.0,
     1.0,
-    0,  # starting pose
-    14.0,
-    0.1,
-    0.1,  # starting velocity
-    -0.1,  # starting steering angle
+    0.0,  # starting pose
+    15.0,
+    0.0,
+    0.0,  # starting velocity
+    0.0,  # starting steering angle
     0.0,  # starting steering disturbance
     10.0,  # starting side force disturbance
 ]
@@ -257,10 +258,10 @@ def plot_r_tuning():
 
 
 def plot_all_state_response():
-    N = 30
+    N = 50
     Tf = dt * N
     sim = StepSimulator(
-        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="L"
     )
     state, input = sim.simulate(sim_len)
     time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
@@ -464,6 +465,335 @@ def plot_compare_controllers():
     plt.show()
 
 
+def plot_ekf_convergence():
+    N = 200
+    Tf = dt * N
+    sim = StepSimulator(
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
+    )
+    u = 0.1 * np.sin(np.linspace(0, Tf, N))
+    u = 0.1 * np.ones(N)
+    u[100:] = 0
+    state, input, estimate = sim.lsim(u, N)
+
+    num_states = state.shape[1]
+    num_subplots = num_states + 1  # Include input subplot
+    fig, axes = plt.subplots(
+        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+    )
+
+    time = np.linspace(0, Tf, N)
+    colors = [
+        cmap(i / num_subplots) for i in range(num_subplots)
+    ]  # Use the cmap variable for colors
+
+    results = []  # To store metrics for each state
+
+    # Plot each state on a separate subplot
+    for i in range(0, num_states):
+        y = state[:, i]
+        axes[i].plot(
+            time,
+            y,
+            label=f"{state_names[i]} truth",
+            linewidth=2,
+            color=colors[i],
+        )
+        axes[i].plot(
+            time,
+            estimate[:, i],
+            label=f"{state_names[i]} estimate",
+            linewidth=2,
+            linestyle="--",
+            color=colors[i],
+        )
+        axes[i].set_ylabel(state_names[i])
+        axes[i].legend(
+            loc="upper right", fontsize=10, frameon=True
+        )  # Place labels in the same corner
+        axes[i].grid(True)
+
+    # Plot the input on the last subplot
+    axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
+    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_ylabel("Steer rate")
+    axes[-1].legend(
+        loc="upper right", fontsize=10, frameon=True
+    )  # Place labels in the same corner
+    axes[-1].grid(True)
+
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig("plots/all_state_response.png", dpi=300, bbox_inches="tight")
+
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results)
+    print(df)
+
+    # Save the table to a CSV file
+    df.to_csv("plots/state_metrics.csv", index=False)
+
+    plt.show()
+
+
+def plot_all_states_only_of():
+    N = 50
+    Tf = dt * N
+    sim = StepSimulator(
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="OFL"
+    )
+    state, input, estimate, planned_path = sim.simulate_of(sim_len)
+    time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
+
+    # Compute statistical parameters
+    mean_runtime = np.mean(time_data)
+    median_runtime = np.median(time_data)
+    std_runtime = np.std(time_data)
+    min_runtime = np.min(time_data)
+    max_runtime = np.max(time_data)
+    percentile_90 = np.percentile(time_data, 90)
+
+    # Print the statistical parameters
+    print("Controller Runtime Metrics (in ms):")
+    print(f"Mean Runtime: {mean_runtime:.6f} ms")
+    print(f"Median Runtime: {median_runtime:.6f} ms")
+    print(f"Standard Deviation: {std_runtime:.6f} ms")
+    print(f"Minimum Runtime: {min_runtime:.6f} ms")
+    print(f"Maximum Runtime: {max_runtime:.6f} ms")
+    print(f"90th Percentile Runtime: {percentile_90:.6f} ms")
+
+    del sim.MPC_controller.solver  # Ensure garbage collection
+
+    num_states = state.shape[1]
+    num_subplots = num_states + 1  # Include input subplot
+    fig, axes = plt.subplots(
+        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+    )
+
+    time = np.linspace(0, dt * sim_len, sim_len)
+    colors = [
+        cmap(i / num_subplots) for i in range(num_subplots)
+    ]  # Use the cmap variable for colors
+
+    results = []  # To store metrics for each state
+    # Plot each state on a separate subplot
+    for i in range(0, num_states):
+        y = state[:, i]
+        axes[i].plot(
+            time,
+            y,
+            label=f"{state_names[i]} truth",
+            linewidth=2,
+            color=colors[i],
+        )
+        axes[i].plot(
+            time,
+            estimate[:, i],
+            label=f"{state_names[i]} estimate",
+            linewidth=2,
+            linestyle="--",
+            color=colors[i],
+        )
+        axes[i].set_ylabel(state_names[i])
+        axes[i].legend(
+            loc="upper right", fontsize=10, frameon=True
+        )  # Place labels in the same corner
+        axes[i].grid(True)
+
+        # Calculate metrics
+        rise_time = (
+            next((t for t, val in enumerate(y) if val >= 0.9 * y[-1]), None) * dt
+        )
+        settling_time = next(
+            (t for t, val in enumerate(y[::-1]) if abs(val - y[-1]) > 0.02 * y[-1]),
+            None,
+        )
+        settling_time = (sim_len - settling_time) * dt if settling_time else None
+        overshoot = max(y) - y[-1]
+
+        results.append(
+            {
+                "State": f"x{i}",
+                "Rise Time (s)": rise_time,
+                "Settling Time (s)": settling_time,
+                "Overshoot": overshoot,
+            }
+        )
+
+    # Plot the input on the last subplot
+    axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
+    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_ylabel("Input Amplitude")
+    axes[-1].legend(
+        loc="upper right", fontsize=10, frameon=True
+    )  # Place labels in the same corner
+    axes[-1].grid(True)
+
+    # fixes in post
+    axes[4].set_ylim([5, 17])
+
+    # plot the planned path
+    axes[0].plot(time, planned_path[:, 0], label="Ref", linestyle=":")
+    axes[1].plot(time, planned_path[:, 1], label="Ref", linestyle=":")
+
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig("plots/all_state_response.png", dpi=300, bbox_inches="tight")
+
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results)
+    print(df)
+
+    # Save the table to a CSV file
+    df.to_csv("plots/state_metrics.csv", index=False)
+
+    plt.show()
+
+
+def plot_of_vs_l():
+    N = 50
+    Tf = dt * N
+    sim_of = StepSimulator(
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="OFL"
+    )
+    state_of, input_of, estimate_of, planned_path = sim_of.simulate_of(sim_len)
+    time_data_of = (
+        np.array(sim_of.ocp.metrics["runtime"]) * 1000
+    )  # Convert to milliseconds
+    compute_time_metrics(time_data_of)
+    del sim_of.MPC_controller.solver  # Ensure garbage collection
+
+    sim_l = StepSimulator(
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="L"
+    )
+    state_l, input_l = sim_l.simulate(sim_len)
+    time_data_l = (
+        np.array(sim_l.ocp.metrics["runtime"]) * 1000
+    )  # Convert to milliseconds
+    compute_time_metrics(time_data_l)
+    del sim_l.MPC_controller.solver  # Ensure garbage collection
+
+    num_states = state_l.shape[1]
+    num_subplots = num_states + 2  # Include input subplot
+    fig, axes = plt.subplots(
+        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+    )
+
+    time = np.linspace(0, dt * sim_len, sim_len)
+    colors = [
+        cmap(i / (num_subplots + 6)) for i in range(num_subplots + 6)
+    ]  # Use the cmap variable for colors
+
+    results_of = []  # To store metrics for each state
+    results_l = []
+    for i in range(0, num_states):
+        y = state_of[:, i]
+        axes[i].plot(
+            time,
+            y,
+            label=f"OF {state_names[i]}",
+            linewidth=2,
+            color=colors[i],
+        )
+        results_of.append(performance_metrics(y, i))
+
+        y = state_l[:, i]
+        axes[i].plot(
+            time,
+            y,
+            label=f"L {state_names[i]}",
+            linewidth=2,
+            color=colors[i + 6],
+        )
+        axes[i].set_ylabel(state_names[i])
+        axes[i].legend(
+            loc="upper right", fontsize=10, frameon=True
+        )  # Place labels in the same corner
+        axes[i].grid(True)
+        results_l.append(performance_metrics(y, i))
+
+    # Plot the input on the last subplot
+    axes[-1].plot(time, input_of[:, -1], label="Input", linewidth=2, color=colors[-1])
+    axes[-1].plot(time, input_l[:, -1], label="Input", linewidth=2, color=colors[-4])
+    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_ylabel("Input Amplitude")
+    axes[-1].legend(
+        loc="upper right", fontsize=10, frameon=True
+    )  # Place labels in the same corner
+    axes[-1].grid(True)
+
+    # fixes in post
+    axes[4].set_ylim([5, 17])
+
+    # handle disturbance separately
+    axes[indices["d_f"] - 1].plot(
+        time,
+        state_of[:, indices["d_f"]],
+        linewidth=2,
+        linestyle="--",
+        label="d_f truth",
+        color=colors[indices["d_f"] - 1],
+    )
+    axes[indices["d_f"] - 1].plot(
+        time,
+        estimate_of[:, indices["d_f"]],
+        linewidth=2,
+        label="d_f estimate",
+        color=colors[indices["d_f"] - 1],
+    )
+    axes[indices["d_f"] - 1].set_ylabel(state_names[indices["d_f"]])
+    axes[indices["d_f"] - 1].legend(
+        loc="upper right", fontsize=10, frameon=True
+    )  # Place labels in the same corner
+    axes[indices["d_f"] - 1].grid(True)
+
+    # plot the planned path
+    axes[0].plot(time, planned_path[:, 0], label="Ref", linestyle=":")
+    axes[1].plot(time, planned_path[:, 1], label="Ref", linestyle=":")
+
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig("plots/of_vs_l.png", dpi=300, bbox_inches="tight")
+
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results_of)
+    print(df)
+    df.to_csv("plots/state_metrics_of.csv", index=False)  # save df to csv file
+    # Print the results as a DataFrame
+    df = pd.DataFrame(results_l)
+    print(df)
+    df.to_csv("plots/state_metrics_l.csv", index=False)  # save df to csv file
+
+    plt.show()
+
+
+def performance_metrics(y, i):
+    """calculate performance metrics for one data"""
+    rise_time = next((t for t, val in enumerate(y) if val >= 0.9 * y[-1]), None) * dt
+    settling_time = next(
+        (t for t, val in enumerate(y[::-1]) if abs(val - y[-1]) > 0.02 * y[-1]),
+        None,
+    )
+    settling_time = (sim_len - settling_time) * dt if settling_time else None
+    overshoot = max(y) - y[-1]
+
+    return {
+        "State": f"x{i}",
+        "Rise Time (s)": rise_time,
+        "Settling Time (s)": settling_time,
+        "Overshoot": overshoot,
+    }
+
+
 def compute_time_metrics(time_data_list: list):
     results = []
 
@@ -529,196 +859,12 @@ def compute_performance_metrics(states: list, models: list = ["unknown"]):
     print(df)
 
 
-def plot_ekf_convergence():
-    N = 5000
-    Tf = dt * N
-    sim = StepSimulator(
-        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="none"
-    )
-    u = 0.1 * np.sin(np.linspace(0, Tf, N))
-    u = 0.1 * np.ones(N)
-    u[100:] = 0
-    state, input, estimate = sim.lsim(u, N)
-
-    num_states = state.shape[1]
-    num_subplots = num_states + 1  # Include input subplot
-    fig, axes = plt.subplots(
-        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
-    )
-
-    time = np.linspace(0, Tf, N)
-    colors = [
-        cmap(i / num_subplots) for i in range(num_subplots)
-    ]  # Use the cmap variable for colors
-
-    results = []  # To store metrics for each state
-
-    # Plot each state on a separate subplot
-    for i in range(0, num_states):
-        y = state[:, i]
-        axes[i].plot(
-            time,
-            y,
-            label=f"{state_names[i]} truth",
-            linewidth=2,
-            color=colors[i],
-        )
-        axes[i].plot(
-            time,
-            estimate[:, i],
-            label=f"{state_names[i]} estimate",
-            linewidth=2,
-            linestyle="--",
-            color=colors[i],
-        )
-        axes[i].set_ylabel(state_names[i])
-        axes[i].legend(
-            loc="upper right", fontsize=10, frameon=True
-        )  # Place labels in the same corner
-        axes[i].grid(True)
-
-    # Plot the input on the last subplot
-    axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
-    axes[-1].set_xlabel("Time (s)")
-    axes[-1].set_ylabel("Input Amplitude")
-    axes[-1].legend(
-        loc="upper right", fontsize=10, frameon=True
-    )  # Place labels in the same corner
-    axes[-1].grid(True)
-
-    # Ensure the 'plots' directory exists
-    os.makedirs("plots", exist_ok=True)
-
-    # Save the figure
-    plt.tight_layout()
-    plt.savefig("plots/all_state_response.png", dpi=300, bbox_inches="tight")
-
-    # Print the results as a DataFrame
-    df = pd.DataFrame(results)
-    print(df)
-
-    # Save the table to a CSV file
-    df.to_csv("plots/state_metrics.csv", index=False)
-
-    plt.show()
-
-
-def plot_all_states_of():
-    N = 50
-    Tf = dt * N
-    sim = StepSimulator(
-        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="OFL"
-    )
-    state, input, estimate = sim.simulate_of(sim_len)
-    time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
-
-    # Compute statistical parameters
-    mean_runtime = np.mean(time_data)
-    median_runtime = np.median(time_data)
-    std_runtime = np.std(time_data)
-    min_runtime = np.min(time_data)
-    max_runtime = np.max(time_data)
-    percentile_90 = np.percentile(time_data, 90)
-
-    # Print the statistical parameters
-    print("Controller Runtime Metrics (in ms):")
-    print(f"Mean Runtime: {mean_runtime:.6f} ms")
-    print(f"Median Runtime: {median_runtime:.6f} ms")
-    print(f"Standard Deviation: {std_runtime:.6f} ms")
-    print(f"Minimum Runtime: {min_runtime:.6f} ms")
-    print(f"Maximum Runtime: {max_runtime:.6f} ms")
-    print(f"90th Percentile Runtime: {percentile_90:.6f} ms")
-
-    del sim.MPC_controller.solver  # Ensure garbage collection
-
-    num_states = state.shape[1]
-    num_subplots = num_states + 1  # Include input subplot
-    fig, axes = plt.subplots(
-        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
-    )
-
-    time = np.linspace(0, dt * sim_len, sim_len)
-    colors = [
-        cmap(i / num_subplots) for i in range(num_subplots)
-    ]  # Use the cmap variable for colors
-
-    results = []  # To store metrics for each state
-
-    # Plot each state on a separate subplot
-    for i in range(0, num_states):
-        y = state[:, i]
-        axes[i].plot(
-            time,
-            y,
-            label=f"{state_names[i]} truth",
-            linewidth=2,
-            color=colors[i],
-        )
-        axes[i].plot(
-            time,
-            estimate[:, i],
-            label=f"{state_names[i]} estimate",
-            linewidth=2,
-            linestyle="--",
-            color=colors[i],
-        )
-        axes[i].set_ylabel(state_names[i])
-        axes[i].legend(
-            loc="upper right", fontsize=10, frameon=True
-        )  # Place labels in the same corner
-        axes[i].grid(True)
-
-        # Calculate metrics
-        rise_time = (
-            next((t for t, val in enumerate(y) if val >= 0.9 * y[-1]), None) * dt
-        )
-        settling_time = next(
-            (t for t, val in enumerate(y[::-1]) if abs(val - y[-1]) > 0.02 * y[-1]),
-            None,
-        )
-        settling_time = (sim_len - settling_time) * dt if settling_time else None
-        overshoot = max(y) - y[-1]
-
-        results.append(
-            {
-                "State": f"x{i}",
-                "Rise Time (s)": rise_time,
-                "Settling Time (s)": settling_time,
-                "Overshoot": overshoot,
-            }
-        )
-
-    # Plot the input on the last subplot
-    axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
-    axes[-1].set_xlabel("Time (s)")
-    axes[-1].set_ylabel("Input Amplitude")
-    axes[-1].legend(
-        loc="upper right", fontsize=10, frameon=True
-    )  # Place labels in the same corner
-    axes[-1].grid(True)
-
-    # Ensure the 'plots' directory exists
-    os.makedirs("plots", exist_ok=True)
-
-    # Save the figure
-    plt.tight_layout()
-    plt.savefig("plots/all_state_response.png", dpi=300, bbox_inches="tight")
-
-    # Print the results as a DataFrame
-    df = pd.DataFrame(results)
-    print(df)
-
-    # Save the table to a CSV file
-    df.to_csv("plots/state_metrics.csv", index=False)
-
-    plt.show()
-
-
 if __name__ == "__main__":
 
     # plot_compare_controllers()
     # plot_ekf_convergence()
-    # plot_all_states_of()
+    # plot_all_states_only_of()
     # plot_all_state_response()
     # plot_q_tuning()
-    plot_compare_controllers()
+    # plot_compare_controllers()
+    plot_of_vs_l()

@@ -106,7 +106,7 @@ class StepSimulator:
             if self.disturbed:
                 starting_disturbances = [
                     starting_state[indices["steering_dist"]],
-                    starting_state[indices["force_dist"]],
+                    starting_state[indices["d_f"]],
                 ]
 
         self.pose = np.array(starting_pose)
@@ -147,9 +147,7 @@ class StepSimulator:
         self.vel = new_state[4:7]
         self.steering = new_state[7]
         if self.disturbed:
-            self.disturbances = new_state[
-                [indices["steering_dist"], indices["force_dist"]]
-            ]
+            self.disturbances = new_state[[indices["steering_dist"], indices["d_f"]]]
 
     # def get_waypoints(self, x=None, y=None, heading=None):
     #     if x is None:
@@ -177,7 +175,9 @@ class StepSimulator:
 
         for i in range(n_steps):
 
-            waypoints, speeds, progress, heading_derotation = self.get_waypoints()
+            waypoints, speeds, progress, heading_derotation, absolute_waypoints = (
+                self.get_waypoints()
+            )
 
             # logging.info(f"state before optimizing: {self.red_state}")
             status, trajectory, inputs = self.MPC_controller.optimize(
@@ -201,14 +201,15 @@ class StepSimulator:
 
     def simulate_of(
         self, n_steps, initial_state_estimate: np.ndarray = None
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         simulated_state_trajectory = np.zeros((n_steps, 10))
         simulated_input_trajectory = np.zeros((n_steps, 1))
         estimated_state_trajectory = np.zeros((n_steps, 10))
+        planned_path = np.zeros((n_steps, 2))
 
         if initial_state_estimate is None:
-            initial_pose_est = [-1.0, 0.0, 1.0, 0.0]
-            initial_velocity_est = [8.0, 0.0, 0.0]
+            initial_pose_est = [-5.0, 0.0, 1.0, 0.0]
+            initial_velocity_est = [15.0, 0.0, 0.0]
             initial_steering_angle_est = [0.0]
             initial_disturbances_est = [0.0, 0.0]
             initial_state_estimate = (
@@ -226,11 +227,19 @@ class StepSimulator:
             pos_x_est = x_est[indices["pos_x"]]
             pos_y_est = x_est[indices["pos_y"]]
             heading_est = np.arctan2(
-                x_est[indices["heading_cos"]], x_est[indices["heading_sin"]]
+                x_est[indices["heading_sin"]], x_est[indices["heading_cos"]]
             )
-            waypoints, speeds, progress, heading_derotation = self.get_waypoints(
-                pos_x_est, pos_y_est, heading_est
+            waypoints, speeds, progress, heading_derotation, absolute_waypoints = (
+                self.get_waypoints(pos_x_est, pos_y_est, heading_est)
             )
+            # waypoints, speeds, progress, heading_derotation, absolute_waypoints = (
+            #     self.get_waypoints()
+            # )
+
+            planned_path[i, :] = [
+                absolute_waypoints[0, 0],
+                absolute_waypoints[0, 1],
+            ]
             estimated_IC = SE.estimated_red_state()
             status, trajectory, inputs = self.MPC_controller.optimize(
                 estimated_IC, waypoints, speeds
@@ -263,6 +272,7 @@ class StepSimulator:
             simulated_state_trajectory,
             simulated_input_trajectory,
             estimated_state_trajectory,
+            planned_path,
         )
 
     def step(self):
@@ -345,10 +355,10 @@ class StepSimulator:
             simulated_input_trajectory[i, :] = u[i]
 
             SE.time_update(u[i])
-            print(
-                "measured_state: ",
-                self.dynamics.measure_state_noiseless(self.full_state),
-            )
+            # print(
+            #     "measured_state: ",
+            #     self.dynamics.measure_state_noiseless(self.full_state),
+            # )
             SE.measurement_update(
                 self.dynamics.measure_state_noiseless(self.full_state)
             )

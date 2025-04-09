@@ -10,7 +10,7 @@ indices = {
     "r": 6,
     "steering": 7,
     "steering_dist": 8,
-    "force_dist": 9,
+    "d_f": 9,
 }
 
 
@@ -61,7 +61,7 @@ class Dynamics:
             print("Dynamics are without disturbance")
 
         # noises for the partial state measurement
-        self.measurement_noises = np.array([0.3, 0.3, 0.03, 0.03, 0.0001, 0.01, 0.001])
+        self.measurement_noises = np.array([0.1, 0.1, 0.03, 0.03, 0.0001, 0.001, 0.001])
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
 
@@ -91,7 +91,7 @@ class Dynamics:
         x_dot = np.zeros_like(x)
         if self.disturbed:
             steering_disturbance = x[indices["steering_dist"]]
-            force_disturbance = x[indices["force_dist"]]
+            force_disturbance = x[indices["d_f"]]
         else:
             steering_disturbance = 0
             force_disturbance = 0

@@ -30,15 +30,17 @@ working logic:
 3. get a position and a heading vector for each progress point
 """
 
+
 class Field(Enum):
-    pos_x = 0,
-    pos_y = 1,
-    heading_number = 2,
-    heading_vector_cos = 3,
-    heading_vector_sin = 4,
-    vx = 5,
-    vy = 6,
+    pos_x = (0,)
+    pos_y = (1,)
+    heading_number = (2,)
+    heading_vector_cos = (3,)
+    heading_vector_sin = (4,)
+    vx = (5,)
+    vy = (6,)
     yawrate = 7
+
 
 class StepPlanner:
     def __init__(
@@ -47,7 +49,7 @@ class StepPlanner:
         Nt: float = 10,
         dt: float = 0.2,
         ramp_length: float = 0.0,
-        fields: list = [Field.pos_y, Field.heading_vector_cos, Field.vy, Field.yawrate]
+        fields: list = [Field.pos_y, Field.heading_vector_cos, Field.vy, Field.yawrate],
     ):
         self.target_vel = target_vel  # [m/s]
         self.dt = dt
@@ -72,7 +74,7 @@ class StepPlanner:
             elif 0 <= progress and progress < self.ramp_length:
                 # initial straight
                 positions[i, 1] = progress / self.ramp_length
-            elif self.ramp_length <=progress:
+            elif self.ramp_length <= progress:
                 positions[i, 1] = 1
         return positions
 
@@ -102,7 +104,7 @@ class StepPlanner:
 
         waypoints = self.progresses2position_and_heading(progresses)
         self.prev_progress = current_progress
-
+        absoulte_waypoints = waypoints.copy()
         waypoints[:, 0] -= x
         waypoints[:, 1] -= y
 
@@ -111,7 +113,8 @@ class StepPlanner:
         )
         waypoints[:, 2:] = waypoints[:, 2:] @ heading_derotation
         waypoints[:, :2] = waypoints[:, :2] @ heading_derotation
-        return waypoints, speeds, progresses[0], heading_derotation
+        return waypoints, speeds, progresses[0], heading_derotation, absoulte_waypoints
+
 
 def test_planning():
     Nt = 30
@@ -127,7 +130,6 @@ def test_planning():
 
     waypoints = target_positions
     print(f"Waypoints: {waypoints}")
-
 
     colors = np.arange(waypoints.shape[0]) + 3
     plt.scatter((waypoints[:, 0]), (waypoints[:, 1]), c=colors, cmap="Reds")
