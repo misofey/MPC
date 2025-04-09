@@ -91,8 +91,10 @@ class Dynamics:
         x_dot = np.zeros_like(x)
         if self.disturbed:
             steering_disturbance = x[indices["steering_dist"]]
+            force_disturbance = x[indices["force_dist"]]
         else:
             steering_disturbance = 0
+            force_disturbance = 0
         x_dot[0] = x[2] * x[4] - x[3] * x[5]  # px
         x_dot[1] = x[3] * x[4] + x[2] * x[5]  # py
         x_dot[2] = -x[6] * x[3]  # cos_head
@@ -105,7 +107,7 @@ class Dynamics:
                 * x[6]
             )
             - self.Cf / self.m * (x[7] + steering_disturbance)
-            + x[9]
+            + force_disturbance
         )  # vy
         x_dot[6] = (
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * x[4]) * x[5]

@@ -401,7 +401,7 @@ def plot_compare_controllers():
                 color=colors[i * len(models) + model_idx],  # Keep the original colors
                 linestyle=line_styles[model_idx % len(line_styles)],
             )
-        axes[i].set_ylabel(f"x{i+1} Amplitude")
+        axes[i].set_ylabel(state_names[i])
         axes[i].legend(
             loc="upper right", fontsize=10, frameon=True
         )  # Place labels in the same corner
@@ -662,7 +662,7 @@ def plot_all_states_of():
             linestyle="--",
             color=colors[i],
         )
-        axes[i].set_ylabel(f"x{i} Amplitude")
+        axes[i].set_ylabel(state_names[i])
         axes[i].legend(
             loc="upper right", fontsize=10, frameon=True
         )  # Place labels in the same corner
@@ -717,8 +717,8 @@ def plot_all_states_of():
 if __name__ == "__main__":
 
     # plot_compare_controllers()
-    plot_ekf_convergence()
+    # plot_ekf_convergence()
     # plot_all_states_of()
     # plot_all_state_response()
     # plot_q_tuning()
-    # plot_compare_controllers()
+    plot_compare_controllers()

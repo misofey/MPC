@@ -210,12 +210,12 @@ class StepSimulator:
             initial_pose_est = [-1.0, 0.0, 1.0, 0.0]
             initial_velocity_est = [8.0, 0.0, 0.0]
             initial_steering_angle_est = [0.0]
-            initial_steering_disturbance_est = [0.0]
+            initial_disturbances_est = [0.0, 0.0]
             initial_state_estimate = (
                 initial_pose_est
                 + initial_velocity_est
                 + initial_steering_angle_est
-                + initial_steering_disturbance_est
+                + initial_disturbances_est
             )
 
         SE = CarEKF(self.dt, True, inital_state=initial_state_estimate)
