@@ -25,20 +25,21 @@ starting_state = [
     0.0,  # starting velocity
     0.0,  # starting steering angle
     0.0,  # starting steering disturbance
-    10.0,  # starting side force disturbance
+    -10.0,  # starting side force disturbance
 ]
 
+# plt.rcParams["text.usetex"] = True
 state_names = [
-    "pos_x",
-    "pos_y",
-    "heading_cos",
-    "heading_sin",
-    "vx",
-    "vy",
-    "r",
-    "steer",
-    "steering_dist",
-    "force_dist",
+    r"pos_x",
+    r"pos_y",
+    r"cos($\varphi$)",
+    r"sin($\varphi$)",
+    r"vx",
+    r"vy",
+    r"r",
+    r"$\delta$",
+    r"d_{$\delta$}",
+    r"d_f",
 ]
 
 
@@ -657,12 +658,28 @@ def plot_all_states_only_of():
 
 
 def plot_of_vs_l():
-    N = 50
+    N = 100
     Tf = dt * N
     sim_of = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="OFL"
     )
-    state_of, input_of, estimate_of, planned_path = sim_of.simulate_of(sim_len)
+    initial_state_estimate = np.array(
+        [
+            -6.0,
+            1.0,
+            1.0,
+            0.0,  # pose
+            15.0,
+            1.7,
+            -1.0,  # velocity
+            0.0,  # steering
+            0.0,
+            0.0,  # disturbances
+        ]
+    )
+    state_of, input_of, estimate_of, planned_path = sim_of.simulate_of(
+        sim_len, initial_state_estimate=initial_state_estimate
+    )
     time_data_of = (
         np.array(sim_of.ocp.metrics["runtime"]) * 1000
     )  # Convert to milliseconds
@@ -682,7 +699,7 @@ def plot_of_vs_l():
     num_states = state_l.shape[1]
     num_subplots = num_states + 2  # Include input subplot
     fig, axes = plt.subplots(
-        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+        num_subplots, 1, figsize=(6, 2 * num_subplots), sharex=True
     )
 
     time = np.linspace(0, dt * sim_len, sim_len)
@@ -697,7 +714,7 @@ def plot_of_vs_l():
         axes[i].plot(
             time,
             y,
-            label=f"OF {state_names[i]}",
+            label=f"OF",
             linewidth=2,
             color=colors[i],
         )
@@ -707,11 +724,11 @@ def plot_of_vs_l():
         axes[i].plot(
             time,
             y,
-            label=f"L {state_names[i]}",
+            label=f"L",
             linewidth=2,
             color=colors[i + 6],
         )
-        axes[i].set_ylabel(state_names[i])
+        axes[i].set_ylabel(state_names[i], labelpad=5.0)
         axes[i].legend(
             loc="upper right", fontsize=10, frameon=True
         )  # Place labels in the same corner
@@ -719,10 +736,10 @@ def plot_of_vs_l():
         results_l.append(performance_metrics(y, i))
 
     # Plot the input on the last subplot
-    axes[-1].plot(time, input_of[:, -1], label="Input", linewidth=2, color=colors[-1])
-    axes[-1].plot(time, input_l[:, -1], label="Input", linewidth=2, color=colors[-4])
+    axes[-1].plot(time, input_of[:, -1], label="OF", linewidth=2, color=colors[-1])
+    axes[-1].plot(time, input_l[:, -1], label="L", linewidth=2, color=colors[-4])
     axes[-1].set_xlabel("Time (s)")
-    axes[-1].set_ylabel("Input Amplitude")
+    axes[-1].set_ylabel(r"$\dot{\delta}$")
     axes[-1].legend(
         loc="upper right", fontsize=10, frameon=True
     )  # Place labels in the same corner
@@ -731,12 +748,21 @@ def plot_of_vs_l():
     # fixes in post
     axes[4].set_ylim([5, 17])
 
+    # plot vy estimate as well
+    axes[indices["vy"]].plot(
+        time,
+        estimate_of[:, indices["vy"]],
+        linewidth=2,
+        linestyle="--",
+        label=rf"OF vy est.",
+        color=colors[indices["vy"]],
+    )
+    axes[indices["vy"]].legend(loc="upper right", fontsize=10, frameon=True)
     # handle disturbance separately
     axes[indices["d_f"] - 1].plot(
         time,
         state_of[:, indices["d_f"]],
         linewidth=2,
-        linestyle="--",
         label="d_f truth",
         color=colors[indices["d_f"] - 1],
     )
@@ -745,11 +771,12 @@ def plot_of_vs_l():
         estimate_of[:, indices["d_f"]],
         linewidth=2,
         label="d_f estimate",
+        linestyle="--",
         color=colors[indices["d_f"] - 1],
     )
     axes[indices["d_f"] - 1].set_ylabel(state_names[indices["d_f"]])
     axes[indices["d_f"] - 1].legend(
-        loc="upper right", fontsize=10, frameon=True
+        loc="lower right", fontsize=10, frameon=True
     )  # Place labels in the same corner
     axes[indices["d_f"] - 1].grid(True)
 
@@ -762,7 +789,7 @@ def plot_of_vs_l():
 
     # Save the figure
     plt.tight_layout()
-    plt.savefig("plots/of_vs_l.png", dpi=300, bbox_inches="tight")
+    plt.savefig("plots/of_vs_l.png", bbox_inches="tight")
 
     # Print the results as a DataFrame
     df = pd.DataFrame(results_of)

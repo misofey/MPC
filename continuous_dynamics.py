@@ -61,7 +61,7 @@ class Dynamics:
             print("Dynamics are without disturbance")
 
         # noises for the partial state measurement
-        self.measurement_noises = np.array([0.1, 0.1, 0.03, 0.03, 0.0001, 0.001, 0.001])
+        self.measurement_noises = np.array([0.3, 0.3, 0.1, 0.1, 0.1, 0.01, 0.01])
 
         # self.measurement_covariance = np.diag(1 / self.measurement_noises)
 

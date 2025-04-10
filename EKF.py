@@ -27,7 +27,7 @@ class CarEKF:
 
         self.P = np.diag([1, 1, 1, 1, 1, 10.0, 1.0, 1.0, 0.0, 1000000])
         self.Q = np.diag(
-            [0.05, 0.05, 0.01, 0.01, 0.001, 0.1, 0.01, 0.01, 0.0, 1.1]
+            [0.05, 0.05, 0.01, 0.01, 0.001, 0.1, 0.01, 0.01, 0.0, 0.0]
         )  # assume no process noise
         self.R = np.diag(self.dynamics.measurement_noises)
 
