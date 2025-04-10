@@ -50,9 +50,9 @@ class LPVOcp(AcadosOcp):
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
         self.max_steering = params["model"]["max_steering_angle"]
-        self.max_steering_rate = (
-            3 * self.max_steering
-        )  # one second from full left to full right
+
+        # one second from full left to full right
+        self.max_steering_rate = params["model"]["max_steering_rate"]
 
         # Linearization point
         self.x_lin_point = np.array([0, 0, 0, 0, 0, 0])

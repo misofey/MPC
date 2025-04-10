@@ -56,9 +56,7 @@ class OFLOcp(AcadosOcp):
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
         self.max_steering = params["model"]["max_steering_angle"]
-        self.max_steering_rate = params["model"][
-            "max_steering_rate"
-        ]  # one second from full left to full right
+        self.max_steering_rate = params["model"]["max_steering_rate"]
 
         # Linearization point
         self.x_lin_point = np.array([0, 0, 0, 0, 0, 0])
@@ -301,9 +299,9 @@ class OFLOcp(AcadosOcp):
         self.solver_options.tol = 1e-6
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
-        self.solver_options.print_level = 3
+        self.solver_options.print_level = 0
         # ocp.solver_options.nlp_solver_exact_hessian = True
-        self.solver_options.qp_solver_warm_start = 0
+        self.solver_options.qp_solver_warm_start = 1
         self.solver_options.regularize_method = "MIRROR"
 
     def waypoints_to_references(self, waypoints: np.ndarray) -> np.ndarray:
