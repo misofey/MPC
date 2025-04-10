@@ -241,8 +241,9 @@ class StepSimulator:
                 absolute_waypoints[0, 1],
             ]
             estimated_IC = SE.estimated_red_state()
+            d_est = estimated_IC[-1]
             status, trajectory, inputs = self.MPC_controller.optimize(
-                estimated_IC, waypoints, speeds
+                estimated_IC, waypoints, speeds, d_est
             )
 
             steer = inputs[0]

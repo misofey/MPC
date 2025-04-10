@@ -11,7 +11,7 @@ class CarEKF:
         inital_state=None,
     ):
         if inital_state is None:
-            self.x_est = np.zeros(9)
+            self.x_est = np.zeros(10)
         else:
             self.x_est = np.array(inital_state)
 

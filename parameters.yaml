@@ -1,5 +1,5 @@
 controller:
-  N: 20
+  N: 50
   Q:
   - - 0
     - 0
@@ -40,15 +40,15 @@ controller:
   R:
   - - 1
   discrete: true
-  dt: 0.1
+  dt: 0.01
   q: 1
-  r: 1.0
+  r: 1000.0
 model:
   Cf: null
   Cr: null
   I_z: 294
   m: 180
   max_steering_angle: 0.3
-  max_steering_rate: 1.6
+  max_steering_rate: 0.9
   wbase: 1.53
   x_cg: 0.57

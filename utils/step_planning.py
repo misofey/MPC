@@ -56,6 +56,7 @@ class StepPlanner:
         self.Nt = Nt
 
         self.prev_progress = 0
+        self.step_amplitude = 1.0
 
         self.ramp_length = ramp_length
 
@@ -73,9 +74,9 @@ class StepPlanner:
                 positions[i, 1] = 0
             elif 0 <= progress and progress < self.ramp_length:
                 # initial straight
-                positions[i, 1] = progress / self.ramp_length
+                positions[i, 1] = self.step_amplitude * progress / self.ramp_length
             elif self.ramp_length <= progress:
-                positions[i, 1] = 1
+                positions[i, 1] = self.step_amplitude
         return positions
 
     @staticmethod

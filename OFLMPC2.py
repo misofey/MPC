@@ -127,6 +127,7 @@ class OFLOcp(AcadosOcp):
         steering_rate = self.model.u[0, 0]
 
         v_x = self.model.p[0, 0]
+        d_f = self.model.p[1]
 
         d_p_x = v_x * 1  # - v_y * np.sin(heading)
 
@@ -141,6 +142,7 @@ class OFLOcp(AcadosOcp):
             * omega
         )
         d_v_y -= self.Cf / self.m * steering_angle
+        d_v_y += d_f
 
         d_omega = (
             (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * v_x + 0.001) * v_y
@@ -168,7 +170,7 @@ class OFLOcp(AcadosOcp):
         self.B_d[3, 0] = 1 / self.m
         self.C_d = np.eye(self.n_outputs, self.n_disturbances)
 
-        self.f += self.B_d @ self.model.p[self.n_parameters :]
+        # self.f += self.B_d @ self.model.p[self.n_parameters :]
 
     def set_discrete_dynamics(self, type: str = "fe") -> None:
 
@@ -267,7 +269,7 @@ class OFLOcp(AcadosOcp):
         self.cost.yref_e = np.zeros(self.n_states + self.n_inputs)
 
         # Initial parameter trajectory
-        self.parameter_values = np.array([9.0, 0.5])
+        self.parameter_values = np.array([9.0, -10])
 
     def set_terminal_cost(self) -> None:
         self.cost.W_e = np.zeros(
@@ -296,7 +298,7 @@ class OFLOcp(AcadosOcp):
             self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
-        self.solver_options.tol = 1e-6
+        self.solver_options.tol = 1e-4
         # self.solver_options.nlp_solver_tol_comp = 1e-2
 
         self.solver_options.print_level = 0
@@ -310,14 +312,14 @@ class OFLOcp(AcadosOcp):
         references[:, :3] = np.concatenate((waypoints[:, :2], waypoints[:, 3:]), axis=1)
         return references
 
-    def optimize(self, x0, waypoints, p, d_hat=np.array([[1.0]])):
+    def optimize(self, x0, waypoints, p, d_hat):
         # print("x0: ", x0)
         starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
         ref_points = self.waypoints_to_references(waypoints)
 
         for i in range(self.N):
             self.solver.cost_set(i, "yref", ref_points[i, :])
-            self.solver.set(i, "p", np.concatenate((p[i].reshape((1, -1)), d_hat)))
+            self.solver.set(i, "p", np.array([p[i], d_hat]))
 
         x_ref_e = np.array(
             [ref_points[self.N, 1], ref_points[self.N, 3], 0, 0, ref_points[self.N, 4]]
