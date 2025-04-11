@@ -24,7 +24,7 @@ class LPVOcp(AcadosOcp):
                 handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         # Load parameters from a YAML file
-        with open("parameters.yaml", "r") as file:
+        with open("parameters_LPV.yaml", "r") as file:
             params = yaml.safe_load(file)
 
         # Assign parameters to class attributes
@@ -50,8 +50,6 @@ class LPVOcp(AcadosOcp):
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
         self.max_steering = params["model"]["max_steering_angle"]
-
-        # one second from full left to full right
         self.max_steering_rate = params["model"]["max_steering_rate"]
 
         # Linearization point
@@ -120,7 +118,7 @@ class LPVOcp(AcadosOcp):
 
         steering_rate = self.model.u[0, 0]
 
-        v_x = self.model.p[self.n_states, 0]
+        v_x = cs.MX.sym("p_x", 1, 1)
         logging.info(v_x)
 
         # Nonlinear dynamics
@@ -153,20 +151,24 @@ class LPVOcp(AcadosOcp):
         self.f = cs.vertcat(d_p_x, d_p_y, d_heading, d_v_y, d_omega, d_steering)
 
         self.A = cs.jacobian(self.f, self.model.x)
-        self.A = cs.Function("A", [self.model.x, self.model.u, self.model.p], [self.A])
-        self.A = self.A(self.x_lin_point, self.u_lin_point, self.model.p)
+        self.A = cs.Function("A", [self.model.x, v_x, self.model.u], [self.A])
+        self.A = self.A(self.model.p[:self.n_states], 
+                        self.model.p[self.n_states:self.n_states+self.n_params], 
+                        self.model.p[self.n_states+self.n_params:self.n_states+self.n_params+self.n_inputs])
         self.B = cs.jacobian(self.f, self.model.u)
-        self.B = cs.Function("B", [self.model.x, self.model.u, self.model.p], [self.B])
-        self.B = self.B(self.x_lin_point, self.u_lin_point, self.model.p)
+        self.B = cs.Function("B", [self.model.x, v_x, self.model.u], [self.B])
+        self.B = self.B(self.model.p[:self.n_states], 
+                        self.model.p[self.n_states:self.n_states+self.n_params], 
+                        self.model.p[self.n_states+self.n_params:self.n_states+self.n_params+self.n_inputs])
 
-        self.model.f_expl_expr = (
-            self.A @ (self.model.x)
-            + self.B @ (self.model.u)
-            + cs.vertcat(v_x, 0, 0, 0, 0, 0)
-        )
-        self.model.f_impl_expr = self.model.xdot - (
-            self.A @ self.model.x + self.B @ self.model.u
-        )
+        f = cs.Function("f", [self.model.x, v_x, self.model.u], [self.f])
+        f_0 = f(self.model.p[:self.n_states], 
+                self.model.p[self.n_states:self.n_states+self.n_params], 
+                self.model.p[self.n_states+self.n_params:self.n_states+self.n_params+self.n_inputs])
+        x_0 = self.model.p[:self.n_states]
+        u_0 = self.model.p[self.n_states+self.n_params:self.n_states+self.n_params+self.n_inputs]
+        dx = self.A @ (self.model.x-x_0) + self.B @ (self.model.u-u_0) + f_0
+        self.model.disc_dyn_expr = self.model.x + dx * self.Tf/self.N
 
     def set_constraints(self) -> None:
         # Bounds for self.model.x
@@ -231,7 +233,7 @@ class LPVOcp(AcadosOcp):
         self.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
         self.solver_options.nlp_solver_type = "SQP"
         self.solver_options.hessian_approx = "EXACT"
-        self.solver_options.integrator_type = "ERK"
+        self.solver_options.integrator_type = "DISCRETE"
         self.solver_options.globalization = "MERIT_BACKTRACKING"
 
         self.solver_options.nlp_solver_max_iter = 200
@@ -249,7 +251,7 @@ class LPVOcp(AcadosOcp):
         references[:, :3] = np.concatenate((waypoints[:, :2], waypoints[:, 3:]), axis=1)
         return references
 
-    def optimize(self, x0, waypoints, p, lin_mode: str = "prev_iter"):
+    def optimize(self, x0, waypoints, p, lin_mode: str = "reference"):
         starting_state = np.array([0, 0, 0, x0[4], x0[5], x0[6]])
         ref_points = self.waypoints_to_references(waypoints)
 
@@ -294,13 +296,6 @@ class LPVOcp(AcadosOcp):
                     ),
                 )
 
-        # self.set(self.ocp.N, "yref", ref_points[self.ocp.N, :])
-        # self.set(0, "lbx", starting_state)
-        # self.set(0, "ubx", starting_state)
-        #
-        # status = self.solve()
-        # trajectory = self.get_flat("x")
-        # inputs = self.get_flat("u")
 
         u0 = self.solver.solve_for_x0(starting_state)
 
@@ -344,15 +339,3 @@ class LPVOcp(AcadosOcp):
         )
 
         return status, trajectory, inputs
-
-
-if __name__ == "__main__":
-    N = 100
-    Tf = 0.5
-    ocp = NLOcp(N, Tf)
-    x0 = np.array([0, 0, 1, 0, 0, 0, 0])
-    ref_points = np.ones((N, 6)) * 0.01
-    p = np.array([1.0])
-    status, trajectory = ocp.solve_problem(x0, ref_points, p)
-    plt.plot(trajectory[0, :], trajectory[1, :])
-    plt.show()
