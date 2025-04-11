@@ -477,7 +477,8 @@ def plot_ekf_convergence():
     u[100:] = 0
     state, input, estimate = sim.lsim(u, N)
 
-    num_states = state.shape[1]
+    plotted_fields = [0, 1, 2, 3, 4, 5, 6, 7, 9]
+    num_states = len(plotted_fields)
     num_subplots = num_states + 1  # Include input subplot
     fig, axes = plt.subplots(
         num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
@@ -491,28 +492,28 @@ def plot_ekf_convergence():
     results = []  # To store metrics for each state
 
     # Plot each state on a separate subplot
-    for i in range(0, num_states):
-        y = state[:, i]
-        axes[i].plot(
+    for state_id, plot_id in zip(plotted_fields, range(len(plotted_fields))):
+        y = state[:, state_id]
+        axes[plot_id].plot(
             time,
             y,
-            label=f"{state_names[i]} truth",
+            label=f"{state_names[state_id]} truth",
             linewidth=2,
-            color=colors[i],
+            color=colors[plot_id],
         )
-        axes[i].plot(
+        axes[plot_id].plot(
             time,
-            estimate[:, i],
-            label=f"{state_names[i]} estimate",
+            estimate[:, state_id],
+            label=f"{state_names[state_id]} estimate",
             linewidth=2,
             linestyle="--",
-            color=colors[i],
+            color=colors[plot_id],
         )
-        axes[i].set_ylabel(state_names[i])
-        axes[i].legend(
+        axes[plot_id].set_ylabel(state_names[state_id])
+        axes[plot_id].legend(
             loc="upper right", fontsize=10, frameon=True
         )  # Place labels in the same corner
-        axes[i].grid(True)
+        axes[plot_id].grid(True)
 
     # Plot the input on the last subplot
     axes[-1].plot(time, input[:, -1], label="Input", linewidth=2, color=colors[-1])
@@ -696,7 +697,8 @@ def plot_of_vs_l():
     compute_time_metrics(time_data_l)
     del sim_l.MPC_controller.solver  # Ensure garbage collection
 
-    num_states = state_l.shape[1]
+    plotted_fields = [1, 2, 3, 5, 6, 7]
+    num_states = len(plotted_fields)
     num_subplots = num_states + 2  # Include input subplot
     fig, axes = plt.subplots(
         num_subplots, 1, figsize=(6, 2 * num_subplots), sharex=True
@@ -709,31 +711,41 @@ def plot_of_vs_l():
 
     results_of = []  # To store metrics for each state
     results_l = []
-    for i in range(0, num_states):
-        y = state_of[:, i]
-        axes[i].plot(
+    for state_id, plot_id in zip(plotted_fields, range(len(plotted_fields))):
+        y = state_of[:, state_id]
+        axes[plot_id].plot(
             time,
             y,
             label=f"OF",
             linewidth=2,
-            color=colors[i],
+            color=colors[plot_id],
         )
-        results_of.append(performance_metrics(y, i))
+        results_of.append(performance_metrics(y, state_id))
 
-        y = state_l[:, i]
-        axes[i].plot(
+        y = state_l[:, state_id]
+        axes[plot_id].plot(
             time,
             y,
             label=f"L",
             linewidth=2,
-            color=colors[i + 6],
+            color=colors[plot_id + 6],
         )
-        axes[i].set_ylabel(state_names[i], labelpad=5.0)
-        axes[i].legend(
+
+        if state_id == indices["vy"]:
+            axes[plot_id].plot(
+                time,
+                estimate_of[:, state_id],
+                linewidth=2,
+                linestyle="--",
+                label=rf"OF {state_names[state_id]} est.",
+                color=colors[plot_id],
+            )
+        axes[plot_id].set_ylabel(state_names[state_id], labelpad=5.0)
+        axes[plot_id].legend(
             loc="upper right", fontsize=10, frameon=True
         )  # Place labels in the same corner
-        axes[i].grid(True)
-        results_l.append(performance_metrics(y, i))
+        axes[plot_id].grid(True)
+        results_l.append(performance_metrics(y, state_id))
 
     # Plot the input on the last subplot
     axes[-1].plot(time, input_of[:, -1], label="OF", linewidth=2, color=colors[-1])
@@ -745,44 +757,31 @@ def plot_of_vs_l():
     )  # Place labels in the same corner
     axes[-1].grid(True)
 
-    # fixes in post
-    axes[4].set_ylim([5, 17])
-
-    # plot vy estimate as well
-    axes[indices["vy"]].plot(
-        time,
-        estimate_of[:, indices["vy"]],
-        linewidth=2,
-        linestyle="--",
-        label=rf"OF vy est.",
-        color=colors[indices["vy"]],
-    )
-    axes[indices["vy"]].legend(loc="upper right", fontsize=10, frameon=True)
     # handle disturbance separately
-    axes[indices["d_f"] - 1].plot(
+    axes[-2].plot(
         time,
         state_of[:, indices["d_f"]],
         linewidth=2,
         label="d_f truth",
-        color=colors[indices["d_f"] - 1],
+        color=colors[num_subplots],
     )
-    axes[indices["d_f"] - 1].plot(
+    axes[-2].plot(
         time,
         estimate_of[:, indices["d_f"]],
         linewidth=2,
         label="d_f estimate",
         linestyle="--",
-        color=colors[indices["d_f"] - 1],
+        color=colors[num_subplots],
     )
-    axes[indices["d_f"] - 1].set_ylabel(state_names[indices["d_f"]])
-    axes[indices["d_f"] - 1].legend(
+    axes[-2].set_ylabel(state_names[indices["d_f"]])
+    axes[-2].legend(
         loc="lower right", fontsize=10, frameon=True
     )  # Place labels in the same corner
-    axes[indices["d_f"] - 1].grid(True)
+    axes[-2].grid(True)
 
     # plot the planned path
-    axes[0].plot(time, planned_path[:, 0], label="Ref", linestyle=":")
-    axes[1].plot(time, planned_path[:, 1], label="Ref", linestyle=":")
+    # axes[0].plot(time, planned_path[:, 0], label="Ref", linestyle=":")
+    axes[0].plot(time, planned_path[:, 1], label="Ref", linestyle=":")
 
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
@@ -889,9 +888,9 @@ def compute_performance_metrics(states: list, models: list = ["unknown"]):
 if __name__ == "__main__":
 
     # plot_compare_controllers()
-    # plot_ekf_convergence()
+    plot_ekf_convergence()
     # plot_all_states_only_of()
     # plot_all_state_response()
     # plot_q_tuning()
     # plot_compare_controllers()
-    plot_of_vs_l()
+    # plot_of_vs_l()
