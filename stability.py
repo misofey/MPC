@@ -26,3 +26,16 @@ def check_control_amissible_invariance(P, f:callable, K, c) -> bool:
             return False
         
     return True
+
+def binary_search(P, f:callable, K, c_u, epsilon=1e-6) -> float:
+    c_l = 0
+    c = 0
+    c_best = 0
+    while c_u - c_l > epsilon:
+        c = (c_l + c_u) / 2
+        if check_control_amissible_invariance(P, f, K, c):
+            c_best = c
+            c_l = c
+        else:
+            c_u = c
+    return c_best
