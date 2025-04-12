@@ -1,6 +1,6 @@
 import numpy as np
 
-def check_control_amissible_invariance(P, f:callable, K, c) -> bool:
+def check_control_amissible_invariance(P, f:callable, c) -> bool:
     
     # Obtain diagonal form of P
     eigvals, eigvecs = np.linalg.eigh(P)
@@ -18,7 +18,7 @@ def check_control_amissible_invariance(P, f:callable, K, c) -> bool:
         # Transform back to original coordinate frame
         x = Q @ vertex
         # Apply the control law
-        x_next = f(x - K @ x)
+        x_next = f(x)
         # Transform back to derotated coordinate frame
         vertex_next = Q.T @ x_next
         # Check if the vertex is in the proposed invariant set
@@ -27,13 +27,13 @@ def check_control_amissible_invariance(P, f:callable, K, c) -> bool:
         
     return True
 
-def binary_search(P, f:callable, K, c_u, epsilon=1e-6) -> float:
+def binary_search(P, f:callable, c_u, epsilon=1e-6) -> float:
     c_l = 0
     c = 0
     c_best = 0
     while c_u - c_l > epsilon:
         c = (c_l + c_u) / 2
-        if check_control_amissible_invariance(P, f, K, c):
+        if check_control_amissible_invariance(P, f, c):
             c_best = c
             c_l = c
         else:

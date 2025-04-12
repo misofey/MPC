@@ -6,6 +6,7 @@ import control as ct
 import sympy as sp
 import yaml
 import logging
+from stability import binary_search
 
 
 class LOcp(AcadosOcp):
@@ -27,7 +28,7 @@ class LOcp(AcadosOcp):
                 handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         # Load parameters from a YAML file
-        with open("parameters.yaml", "r") as file:
+        with open("parameters_L.yaml", "r") as file:
             params = yaml.safe_load(file)
 
         # Assign parameters to class attributes
@@ -170,8 +171,6 @@ class LOcp(AcadosOcp):
 
         dt = self.Tf / self.N  # Time step
 
-        # TODO: The linearization point should be from x and u
-        # idk why it works like this but not like that
         x_dot = (
             lambda x, u: self.A @ (x - self.x_lin_point)
             + self.B @ (u - self.u_lin_point)
@@ -192,8 +191,6 @@ class LOcp(AcadosOcp):
 
     def set_cont_dynamics(self) -> None:
 
-        # TODO: same comment as at the ddiscrete model
-        # self.model.f_expl_expr = self.A @ (self.model.x) + self.B @ (self.model.u)
         self.model.f_expl_expr = self.f
 
     def set_constraints(self) -> None:
@@ -208,9 +205,7 @@ class LOcp(AcadosOcp):
         self.constraints.ubx_0 = np.array([0, 0, 0, 0, 0, 0])
 
         # Bounds for input
-        self.constraints.idxbu = np.array(
-            [0]
-        )  # the 0th input has the constraints, so J_bu = [1]
+        self.constraints.idxbu = np.array([0]) 
         self.constraints.lbu = np.array([-self.max_steering_rate])
         self.constraints.ubu = np.array([self.max_steering_rate])
 
@@ -441,9 +436,7 @@ class LOcp(AcadosOcp):
         print(f"Solution of ARE: {P}")
         self.P = P
 
-
-if __name__ == "__main__":
-    N = 50
-    Tf = 1
-    ocp = LOcp(N, Tf)
-    ocp.stability()
+        logging.info("Finding terminal set")
+        x_next = lambda x: (A  - B @ K) @ x
+        c_initial_guess = 1e-2
+        binary_search(P, x_next, c_initial_guess, 1e-6)
