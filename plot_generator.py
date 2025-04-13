@@ -38,7 +38,7 @@ state_names = [
     rf"$v_{{y}}$ [m/s]",
     r"r [rad/s]",
     r"$\delta$ [rad]",
-    f"$\dot{{\delta}}$"+"[rad/s$^2$]",
+    f"$\dot{{\delta}}$" + "[rad/s$^2$]",
     f"$d_{{F}}$ [m/s$^2$]",
 ]
 
@@ -346,7 +346,7 @@ def plot_initial_condition(model):
     models = []
     for idx in range(num_lines):
         Tf = dt * N
-        
+
         sim = StepSimulator(
             N=N,
             Tf=Tf,
@@ -357,10 +357,9 @@ def plot_initial_condition(model):
         state, input, reference = sim.simulate(sim_len)
         states.append(state)
         models.append(f"{sim.model}-q:{0}")
-        
 
         state, input, reference = sim.dlqr_sim(sim_len)
-        del sim.MPC_controller.solver 
+        del sim.MPC_controller.solver
         plt.plot(
             np.linspace(0, dt * sim_len, sim_len),
             state[:, 1],
@@ -380,7 +379,7 @@ def plot_initial_condition(model):
     plt.xlabel("Time [s]")
     plt.ylabel(f"{state_names[1]} [m]")
 
-    #compute_performance_metrics(states, models)
+    # compute_performance_metrics(states, models)
 
     # Add the main legend for q values
     # Add the main legend for q values
@@ -521,7 +520,7 @@ def plot_all_state_response(model):
     sim = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
     )
-    state, input, ref= sim.simulate(sim_len)
+    state, input, ref = sim.simulate(sim_len)
     time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
 
     compute_time_metrics([time_data])
@@ -1004,7 +1003,7 @@ def plot_of_vs_l():
     axes[-1].plot(time, input_of[:, -1], label="OF", linewidth=2, color=colors[-1])
     axes[-1].plot(time, input_l[:, -1], label="L", linewidth=2, color=colors[-4])
     axes[-1].set_xlabel("Time [s]")
-    axes[-1].set_ylabel(r"$\dot{\delta}$" +" [rad/s$^2$]")
+    axes[-1].set_ylabel(r"$\dot{\delta}$" + " [rad/s$^2$]")
     axes[-1].legend(
         loc="upper right", fontsize=15, frameon=True
     )  # Place labels in the same corner
@@ -1077,13 +1076,13 @@ def plot_dlqr():
     N = 50
     Tf = dt * N
     sim = StepSimulator(
-        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="LPV"
+        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="L"
     )
+    K = sim.ocp.K
+    state, input, reference = sim.dlqr_sim(sim_len, K)
+    # time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
 
-    state, input = sim.simulate_of(sim_len, np.zeros(5))
-    time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
-
-    compute_time_metrics([time_data])
+    # compute_time_metrics([time_data])
 
     del sim.MPC_controller.solver  # Ensure garbage collection
 
@@ -1146,14 +1145,14 @@ def plot_dlqr():
 
     # Save the figure
     plt.tight_layout()
-    plt.savefig(f"plots/all_state_response_{model}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"plots/all_state_response_DLQR.png", dpi=300, bbox_inches="tight")
 
     # Print the results as a DataFrame
     df = pd.DataFrame(results)
     print(df)
 
     # Save the table to a CSV file
-    df.to_csv(f"plots/state_metrics_{model}.csv", index=False)
+    df.to_csv(f"plots/state_metrics_DLQR.csv", index=False)
 
     plt.show()
 
@@ -1227,9 +1226,10 @@ if __name__ == "__main__":
 
     # plot_compare_controllers()
     # plot_ekf_convergence()
-    #plot_ekf_convergence()
+    # plot_ekf_convergence()
     # plot_all_states_only_of()
-    #plot_all_state_response("L")
+    # plot_all_state_response("L")
+    # plot_all_state_response("NL")
     # plot_q_tuning()
     # plot_n_tuning("LPV")
     # plot_q_y_tuning("LPV")
@@ -1237,4 +1237,5 @@ if __name__ == "__main__":
     plot_initial_condition("L")
     # plot_r_tuning("LPV")
     # plot_compare_controllers()
-    #plot_of_vs_l()
+    # plot_of_vs_l()
+    # plot_dlqr()

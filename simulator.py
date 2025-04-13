@@ -76,7 +76,7 @@ class StepSimulator:
             logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
-            self.disturbed = True
+            self.disturbed = False
         elif model == "LPV":
             logging.info("Simulator Started with LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
@@ -396,25 +396,30 @@ class StepSimulator:
             )
 
             # logging.info(f"state before optimizing: {self.red_state}")
-            #status, trajectory, inputs = self.MPC_controller.optimize(
-            #    self.red_state, waypoints, speeds
-            #)
-            trajectory = []
+            # status, trajectory, inputs = self.MPC_controller.optimize(
+            #     self.red_state, waypoints, speeds
+            # )
+
             dt = self.dynamics.dt
-            y_ref = waypoints[1]
-            ref_state
+            y_ref = 1
             ref_state = np.zeros(5)
-            ref_state[0] = y_ref
+            ref_state[0] = y_ref / 500
             effect_state = self.full_state[[1, 3, 5, 6, 7]]
-            steer = -K @ (ref_state - effect_state)
-            steer = np.clip(steer, -rate_limit, angle_limit)
+            steer = K @ (ref_state - effect_state)
+            print(steer)
+            steer = np.clip(steer, -rate_limit, rate_limit)
             current_steer = self.full_state[-1]
+            steer = np.clip(
+                steer,
+                (-angle_limit - current_steer) / dt,
+                (angle_limit - current_steer) / dt,
+            )
 
             new_state = self.dynamics.rk4_integraton(self.full_state, steer)
 
             self.full_state = new_state
             self.planned_references = waypoints
-            self.planned_trajectory = trajectory
+            # self.planned_trajectory = trajectory
 
             reference[i, :] = absolute_waypoints[0, :]
             simulated_state_trajectory[i, :] = new_state

@@ -171,9 +171,9 @@ class NLOcp(AcadosOcp):
 
         self.cost.cost_type = "LINEAR_LS"
         self.cost.cost_type_e = "LINEAR_LS"
-        Q = np.array([1e-10, 1e1, 1e-10, 1e-10, 1e-1, 1e-1, 0]) * 10
+        Q = np.array([0, 1e5, 1e-10, 1e0, 0, 1e0, 1e0])
         R = np.array([1e0]) * 10
-        Qe = np.array([1e0, 1e0, 1e-2, 1e-2, 1e-4, 1e0, 0])
+        Qe = np.array([0, 1e5, 1e-10, 1e0, 0, 1e0, 1e0]) * 100
         # Cost matrices
         self.cost.W = np.diag(np.append(Q, R))
         self.cost.W_e = np.diag(np.append(Qe, 0))
