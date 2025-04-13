@@ -397,8 +397,11 @@ class StepSimulator:
             )
 
             dt = self.dynamics.dt
+            y_ref = waypoints[1]
+            ref_state = np.zeros(self.dynamics.nx)
+            ref_state[1] = y_ref
 
-            steer = K @ self.full_state
+            steer = -K @ (ref_state - self.full_state)
             steer = np.clip(steer, -rate_limit, angle_limit)
             current_steer = self.full_state[-1]
             steer = np.clip(
