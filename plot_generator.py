@@ -107,7 +107,7 @@ def plot_q_tuning():
             yaml.safe_dump(params, file)
 
         sim = StepSimulator(
-            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state
+            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="NL"
         )
         state, input = sim.simulate(sim_len)
         states.append(state)
@@ -232,7 +232,7 @@ def plot_q_y_tuning(model):
             fontsize=15,
             frameon=True,
         )
-    
+
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
 
@@ -311,7 +311,7 @@ def plot_beta_tuning(model):
             fontsize=15,
             frameon=True,
         )
-    
+
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
 
@@ -380,7 +380,7 @@ def plot_initial_condition(model):
     plt.xlabel("Time [s]")
     plt.ylabel(f"{state_names[1]}")
 
-    
+
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
 
@@ -621,10 +621,10 @@ def plot_compare_controllers():
                 color=colors[i * len(models) + model_idx],  # Keep the original colors
                 linestyle=line_styles[model_idx % len(line_styles)],
             )
-        
+
         if i > 3:
             axes[i].set_ylabel(state_names[i+2])
-        else:       
+        else:
             axes[i].set_ylabel(state_names[i+1])
         axes[i].legend(
             loc="upper right", fontsize=15, frameon=True
@@ -924,7 +924,7 @@ def plot_of_vs_l():
     num_states = len(plotted_fields)
     num_subplots = num_states + 2  # Include input subplot
     fig, axes = plt.subplots(
-        num_subplots, 1, figsize=(6, 2 * num_subplots), sharex=True
+        num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
     )
 
     time = np.linspace(0, dt * sim_len, sim_len)
@@ -1112,6 +1112,7 @@ if __name__ == "__main__":
 
     # plot_compare_controllers()
     #plot_ekf_convergence()
+    # plot_ekf_convergence()
     # plot_all_states_only_of()
     #plot_all_state_response("L")
     # plot_q_tuning()

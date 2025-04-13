@@ -15,25 +15,19 @@ class NLOcp(AcadosOcp):
             logging.basicConfig(
                 level=logging.DEBUG,
                 format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
+                handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         else:
             logging.basicConfig(
                 level=logging.INFO,
                 format="[%(asctime)s][%(levelname)s] - %(message)s",
-                handlers=[
-                    logging.FileHandler("debug.log"),
-                    logging.StreamHandler()
-                ]
+                handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
 
         # Load parameters from a YAML file
         with open("parameters_NL.yaml", "r") as file:
             params = yaml.safe_load(file)
-        
+
         # Assign parameters to class attributes
         self.params = params
         ### Constants ###
@@ -42,18 +36,18 @@ class NLOcp(AcadosOcp):
         self.Tf = Tf
         self.n_states = 7
         self.n_inputs = 1
-        self.n_outputs = 6
+        self.n_outputs = 8
         # Dynamics constants
-        self.m = params["model"]['m']
-        self.I_z = params["model"]['I_z']
-        self.wbase = params["model"]['wbase']
-        self.x_cg = params["model"]['x_cg']
+        self.m = params["model"]["m"]
+        self.I_z = params["model"]["I_z"]
+        self.wbase = params["model"]["wbase"]
+        self.x_cg = params["model"]["x_cg"]
         self.lf = self.x_cg * self.wbase
-        self.lr = (1 - self.x_cg) * self.wbase 
+        self.lr = (1 - self.x_cg) * self.wbase
 
         [self.Cf, self.Cr] = self.get_tyre_stiffness()
 
-        self.max_steering = params["model"]['max_steering_angle']
+        self.max_steering = params["model"]["max_steering_angle"]
         self.max_steering_rate = params["model"]["max_steering_rate"]
 
         # Model setup
@@ -166,25 +160,27 @@ class NLOcp(AcadosOcp):
 
         # Output selection matrix
         Vx = np.eye(self.n_outputs, self.n_states)
-        Vx[[(4, 4), (5, 5)]] = 0
-        Vx[4, 6] = 1
+        # Vx[[(4, 4), (5, 5)]] = 0
+        # Vx[4, 6] = 1
 
         self.cost.Vx_e = Vx
         self.cost.Vx = Vx
 
-        Vu = np.array([[0], [0], [0], [0], [0], [1]])
+        Vu = np.array([[0], [0], [0], [0], [0], [0], [0], [1]])
         self.cost.Vu = Vu
 
         self.cost.cost_type = "LINEAR_LS"
         self.cost.cost_type_e = "LINEAR_LS"
-
+        Q = np.array([1e-10, 1e1, 1e-10, 1e-10, 1e-1, 1e-1, 0]) * 10
+        R = np.array([1e0]) * 10
+        Qe = np.array([1e0, 1e0, 1e-2, 1e-2, 1e-4, 1e0, 0])
         # Cost matrices
-        self.cost.W = np.diag([1e0, 1e0, 1e-3, 1e-1, 1e-2, 1e-4]) * 1
-        self.cost.W_e = np.diag([1e-0, 1e-0, 0.7e-3, 0.7e-3, 1e-2, 0]) * 10
+        self.cost.W = np.diag(np.append(Q, R))
+        self.cost.W_e = np.diag(np.append(Qe, 0))
 
         # Reference trajectory
-        self.cost.yref = np.array([0, 0, 1, 0, 0, 0])
-        self.cost.yref_e = np.array([0, 0, 1, 0, 0, 0])
+        self.cost.yref = np.array([0, 0, 1, 0, 0, 0, 0, 0])
+        self.cost.yref_e = np.array([0, 0, 1, 0, 0, 0, 0, 0])
 
         # Initial parameter trajectory
         self.parameter_values = np.array([9.0])
@@ -212,7 +208,7 @@ class NLOcp(AcadosOcp):
     def waypoints_to_references(self, waypoints):
         references = np.zeros([self.N + 1, self.n_outputs])
         references[:, :4] = waypoints[:, :]
-        references[:, 4] = 0.03
+        # references[:, 4] = 0.00
         return references
 
     def optimize(self, x0, waypoints, p):
@@ -234,11 +230,10 @@ class NLOcp(AcadosOcp):
         # inputs = self.get_flat("u")
 
         u0 = self.solver.solve_for_x0(starting_state)
-        
+
         runtime = self.solver.get_stats("time_tot")
         self.metrics["runtime"].append(runtime)
         logging.info(f"Solver runtime: {runtime*1000} ms")
-
 
         # fish out the results from the solver
         trajectory = np.zeros([self.N + 1, self.n_states])
