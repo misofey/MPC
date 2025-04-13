@@ -39,6 +39,7 @@ from utils import path_planning
 from utils import plotting
 import logging
 from skidpad_simulator import SkidpadSimulator
+import yaml
 
 
 class StepSimulator:
@@ -372,6 +373,51 @@ class StepSimulator:
             simulated_input_trajectory,
             estimated_state_trajectory,
         )
+
+    def dlqr_sim(self, n_steps, K: np.ndarray):
+
+        simulated_state_trajectory = np.zeros((n_steps, self.dynamics.nx))
+        simulated_input_trajectory = np.zeros((n_steps, 1))
+        reference = np.zeros((n_steps, 4))
+        with open("parameters_NL.yaml", "r") as file:
+            params = yaml.safe_load(file)
+
+        rate_limit = params["model"]["max_steering_rate"]
+        angle_limit = params["model"]["max_steering_angle"]
+
+        for i in range(n_steps):
+
+            waypoints, speeds, progress, heading_derotation, absolute_waypoints = (
+                self.get_waypoints()
+            )
+
+            # logging.info(f"state before optimizing: {self.red_state}")
+            status, trajectory, inputs = self.MPC_controller.optimize(
+                self.red_state, waypoints, speeds
+            )
+
+            dt = self.dynamics.dt
+
+            steer = K @ self.full_state
+            steer = np.clip(steer, -rate_limit, angle_limit)
+            current_steer = self.full_state[-1]
+            steer = np.clip(
+                steer,
+                (-angle_limit - current_steer) / dt,
+                (angle_limit - current_steer) / dt,
+            )
+
+            new_state = self.dynamics.rk4_integraton(self.full_state, steer)
+
+            self.full_state = new_state
+            self.planned_references = waypoints
+            self.planned_trajectory = trajectory
+
+            reference[i, :] = absolute_waypoints[0, :]
+            simulated_state_trajectory[i, :] = new_state
+            simulated_input_trajectory[i, :] = steer
+
+        return simulated_state_trajectory, simulated_input_trajectory, reference
 
 
 if __name__ == "__main__":
