@@ -401,14 +401,13 @@ class StepSimulator:
             #)
             trajectory = []
             dt = self.dynamics.dt
-            #x, y, heading, heaing, vy, r, steer
-            print("full_state: ", self.full_state)
-            state = np.concatenate((self.full_state[1:2], self.full_state[3:4], self.full_state[5:8]), axis=0)
-            state[0] -= 1
-            state[1] -= absolute_waypoints[0, 3]
-            print("state: ", state.shape)
-            steer =  -K @ state
-            steer = np.clip(steer, -rate_limit, rate_limit)
+            y_ref = waypoints[1]
+            ref_state
+            ref_state = np.zeros(5)
+            ref_state[0] = y_ref
+            effect_state = self.full_state[[1, 3, 5, 6, 7]]
+            steer = -K @ (ref_state - effect_state)
+            steer = np.clip(steer, -rate_limit, angle_limit)
             current_steer = self.full_state[-1]
 
             new_state = self.dynamics.rk4_integraton(self.full_state, steer)
