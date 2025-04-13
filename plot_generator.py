@@ -31,14 +31,14 @@ starting_state = [
 # plt.rcParams["text.usetex"] = True
 state_names = [
     r"P_{{x}}",
-    f"$P_{{y}}$ [m]",
+    rf"$P_{{y}}$ [m]",
     r"cos($\varphi$) [-]",
     r"sin($\varphi$) [-]",
-    f"$v_{{x}}$ [m/s]",
-    f"$v_{{y}}$ [m/s]",
+    rf"$v_{{x}}$ [m/s]",
+    rf"$v_{{y}}$ [m/s]",
     r"r [rad/s]",
     r"$\delta$ [rad]",
-    f"$\dot{{\delta}}$ [rad/s]",
+    rf"$\dot{{\delta}}$ [rad/s]",
     r"d_f",
 ]
 
@@ -58,7 +58,11 @@ def plot_n_tuning(model):
     for idx, N in enumerate(range(N_low, N_high + 1, N_step)):
         Tf = dt * N
         sim = StepSimulator(
-            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
+            N=N,
+            Tf=Tf,
+            acados_print_level=-1,
+            starting_state=starting_state,
+            model=model,
         )
         state, _, reference = sim.simulate(sim_len)
         del sim.MPC_controller.solver  # Ensure garbage collection
@@ -185,7 +189,11 @@ def plot_q_y_tuning(model):
             yaml.safe_dump(params, file)
 
         sim = StepSimulator(
-            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
+            N=N,
+            Tf=Tf,
+            acados_print_level=-1,
+            starting_state=starting_state,
+            model=model,
         )
         state, input, reference = sim.simulate(sim_len)
         states.append(state)
@@ -264,7 +272,11 @@ def plot_beta_tuning(model):
             yaml.safe_dump(params, file)
 
         sim = StepSimulator(
-            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
+            N=N,
+            Tf=Tf,
+            acados_print_level=-1,
+            starting_state=starting_state,
+            model=model,
         )
         state, input, reference = sim.simulate(sim_len)
         states.append(state)
@@ -274,7 +286,7 @@ def plot_beta_tuning(model):
         plt.plot(
             np.linspace(0, dt * sim_len, sim_len),
             state[:, 1],
-            label=r"$\beta=$"+f"{beta:.1e}",  # Use LaTeX formatting for subscript
+            label=r"$\beta=$" + f"{beta:.1e}",  # Use LaTeX formatting for subscript
             linewidth=2,
             color=colors[idx],
         )
@@ -336,13 +348,13 @@ def plot_initial_condition(model):
 
     C_inv = np.linalg.pinv(sim.MPC_controller.C)
     print(f"C_inv: {C_inv.shape}")
-    x_outside = C_inv@(1.2*np.ones((C_inv.shape[1], 1)))
+    x_outside = C_inv @ (1.2 * np.ones((C_inv.shape[1], 1)))
     print(f"x_outside: {x_outside}")
     input_constraint = sim.MPC_controller.max_steering_rate
     K = sim.MPC_controller.K
     A = sim.MPC_controller.A_stability
     B = sim.MPC_controller.B_stability
-    phi =A-B@K
+    phi = A - B @ K
 
     initial_conditions = [np.zeros((5, 1)), x_outside]
 
@@ -350,12 +362,18 @@ def plot_initial_condition(model):
     for i, x0 in enumerate(initial_conditions):
 
         # Simulate MPC
-        sim = StepSimulator(N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model)
+        sim = StepSimulator(
+            N=N,
+            Tf=Tf,
+            acados_print_level=-1,
+            starting_state=starting_state,
+            model=model,
+        )
         state, input, reference = sim.simulate(sim_len)
         del sim.MPC_controller.solver
 
         # Simulate saturated input LQR
-        lqr_state_resuts = phi@x0
+        lqr_state_resuts = phi @ x0
         print(lqr_state_resuts)
         lqr_input_results = []
         references = np.zeros([reference.shape[0], 5])
@@ -364,22 +382,37 @@ def plot_initial_condition(model):
 
         for j, t in enumerate(time):
             x = lqr_state_resuts[:, -1]
-            u = K@(x-references[j, :])
+            u = K @ (x - references[j, :])
             if np.abs(u) > input_constraint:
-                u = np.sign(u)*np.array([input_constraint])
-            print((A@(x-references[j, :]) + B@u).shape)
-            lqr_state_resuts = np.concatenate((lqr_state_resuts, (A@(x-references[j, :]) + B@u).reshape((-1, 1))), axis=1)
+                u = np.sign(u) * np.array([input_constraint])
+            print((A @ (x - references[j, :]) + B @ u).shape)
+            lqr_state_resuts = np.concatenate(
+                (
+                    lqr_state_resuts,
+                    (A @ (x - references[j, :]) + B @ u).reshape((-1, 1)),
+                ),
+                axis=1,
+            )
             lqr_input_results.append(u)
 
         ax = axes[i]
         print(lqr_state_resuts.shape)
-        ax.plot(time, state[:, 1], label="MPC", linewidth=2,)
-        ax.plot(time, lqr_state_resuts[1, :-1], label="Saturated Input LQR", linewidth=2,)
+        ax.plot(
+            time,
+            state[:, 1],
+            label="MPC",
+            linewidth=2,
+        )
+        ax.plot(
+            time,
+            lqr_state_resuts[1, :-1],
+            label="Saturated Input LQR",
+            linewidth=2,
+        )
 
     # Add labels for the main plot
     plt.xlabel("Time [s]")
     plt.ylabel(f"{state_names[1]}")
-
 
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
@@ -387,6 +420,7 @@ def plot_initial_condition(model):
     # Save the figure
     plt.savefig(f"plots/beta_tuning_plot_{model}.png", dpi=300, bbox_inches="tight")
     plt.show()
+
 
 def plot_r_tuning(model):
 
@@ -413,7 +447,11 @@ def plot_r_tuning(model):
             yaml.safe_dump(params, file)
 
         sim = StepSimulator(
-            N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
+            N=N,
+            Tf=Tf,
+            acados_print_level=-1,
+            starting_state=starting_state,
+            model=model,
         )
         state, input, reference = sim.simulate(sim_len)
         del sim.MPC_controller.solver  # Ensure garbage collection
@@ -495,7 +533,7 @@ def plot_all_state_response(model):
     sim = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
     )
-    state, input, reference = sim.simulate(sim_len)
+    state, input = sim.simulate(sim_len)
     time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
 
     compute_time_metrics([time_data])
@@ -554,7 +592,7 @@ def plot_all_state_response(model):
     )  # Place labels in the same corner
     axes[-1].grid(True)
     # Plot reference on pos_y
-    axes[1].plot(time, reference[:, 1], label="Reference", linestyle=":")
+    # axes[1].plot(time, reference[:, 1], label="Reference", linestyle=":")
     axes[1].legend(loc="upper right", fontsize=15, frameon=True)
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
@@ -582,7 +620,11 @@ def plot_compare_controllers():
 
     for model in models:
         sim = StepSimulator(
-            N=N[model], Tf=N[model]*dt, acados_print_level=0, starting_state=starting_state, model=model
+            N=N[model],
+            Tf=N[model] * dt,
+            acados_print_level=0,
+            starting_state=starting_state,
+            model=model,
         )
         state, input, reference = sim.simulate(sim_len)
         states.append(np.concatenate((state[:, 1:4], state[:, 5:]), axis=1))
@@ -596,7 +638,7 @@ def plot_compare_controllers():
     compute_time_metrics(time_data)
 
     num_states = states[0].shape[1]
-    num_subplots = num_states + 1 # Include input subplot
+    num_subplots = num_states + 1  # Include input subplot
     fig, axes = plt.subplots(
         num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
     )
@@ -623,9 +665,9 @@ def plot_compare_controllers():
             )
 
         if i > 3:
-            axes[i].set_ylabel(state_names[i+2])
+            axes[i].set_ylabel(state_names[i + 2])
         else:
-            axes[i].set_ylabel(state_names[i+1])
+            axes[i].set_ylabel(state_names[i + 1])
         axes[i].legend(
             loc="upper right", fontsize=15, frameon=True
         )  # Place labels in the same corner
@@ -1111,15 +1153,15 @@ def compute_performance_metrics(states: list, models: list = ["unknown"]):
 if __name__ == "__main__":
 
     # plot_compare_controllers()
-    #plot_ekf_convergence()
+    # plot_ekf_convergence()
     # plot_ekf_convergence()
     # plot_all_states_only_of()
-    #plot_all_state_response("L")
+    plot_all_state_response("NL")
     # plot_q_tuning()
     # plot_n_tuning("LPV")
     # plot_q_y_tuning("LPV")
-    #plot_beta_tuning("L")
-    plot_initial_condition("L")
+    # plot_beta_tuning("L")
+    # plot_initial_condition("L")
     # plot_r_tuning("LPV")
     # plot_compare_controllers()
     # plot_of_vs_l()
