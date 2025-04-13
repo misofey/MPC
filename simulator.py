@@ -75,7 +75,7 @@ class StepSimulator:
             logging.info("Simulator Started with Linear Model")
             self.ocp = LOcp(self.N, self.Tf)
             self.MPC_controller = self.ocp
-            self.disturbed = False
+            self.disturbed = True
         elif model == "LPV":
             logging.info("Simulator Started with LPV Model")
             self.ocp = LPVOcp(self.N, self.Tf)
@@ -170,7 +170,7 @@ class StepSimulator:
 
     def simulate(self, n_steps) -> tuple[np.ndarray, np.ndarray]:
 
-        simulated_state_trajectory = np.zeros((n_steps, 8))
+        simulated_state_trajectory = np.zeros((n_steps, self.dynamics.nx))
         simulated_input_trajectory = np.zeros((n_steps, 1))
         reference = np.zeros((n_steps, 4))
 
