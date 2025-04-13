@@ -172,6 +172,7 @@ class StepSimulator:
 
         simulated_state_trajectory = np.zeros((n_steps, 8))
         simulated_input_trajectory = np.zeros((n_steps, 1))
+        reference = np.zeros((n_steps, 4))
 
         for i in range(n_steps):
 
@@ -194,10 +195,11 @@ class StepSimulator:
             self.planned_references = waypoints
             self.planned_trajectory = trajectory
 
+            reference[i, :] = absolute_waypoints[0, :]
             simulated_state_trajectory[i, :] = new_state
             simulated_input_trajectory[i, :] = steer
 
-        return simulated_state_trajectory, simulated_input_trajectory
+        return simulated_state_trajectory, simulated_input_trajectory, reference
 
     def simulate_of(
         self, n_steps, initial_state_estimate: np.ndarray = None
@@ -374,7 +376,7 @@ class StepSimulator:
 
 if __name__ == "__main__":
     # step or skidpad
-    simulate = "step"
+    simulate = "skidpad"
     if simulate == "skidpad":
         N = 10
         Tf = 0.5
