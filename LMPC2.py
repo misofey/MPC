@@ -6,7 +6,7 @@ import control as ct
 import sympy as sp
 import yaml
 import logging
-from stability import binary_search
+from stability import binary_search, estimate_control_amissible_invariant_set
 
 
 class LOcp(AcadosOcp):
@@ -210,12 +210,12 @@ class LOcp(AcadosOcp):
         self.constraints.ubu = np.array([self.max_steering_rate])
 
         # Set terminal constraints
-        # x_ref = cs.vcat((-1.9, -0.6, 0, 0, self.cost.yref[3]))
-        # x_terminal_shifted = self.model.x[1:] - x_ref
-        # self.model.con_h_expr_e = 1/2 * x_terminal_shifted.T @ self.P @ x_terminal_shifted
-        # print(self.model.con_h_expr_e)
-        # self.constraints.lh_e = np.array([-1000000000000])
-        # self.constraints.uh_e = np.array([self.c])
+        #x_ref = cs.vcat((self.model.y[1], self.cost.yref[2], 0, 0, 0))
+        #print(f"x_ref: {x_ref}")
+        #x_terminal_shifted = self.model.x[1:] - x_ref
+        #self.model.con_h_expr_e = self.C@x_terminal_shifted
+        #self.constraints.lh_e = np.ones((self.C.shape[0],1))*-10000000
+        #self.constraints.uh_e = np.ones((self.C.shape[0],1))
 
     def set_cost(self) -> None:
 
@@ -396,8 +396,8 @@ class LOcp(AcadosOcp):
                 [W[0, 0], 0, 0, 0, 0, 0],
                 [0, W[1, 1], 0, 0, 0, 0],
                 [0, 0, W[2, 2], 0, 0, 0],
-                [0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0.0, 0, 0],
+                [0, 0, 0, 0, 0.0, 0],
                 [0, 0, 0, 0, 0, W[3, 3]],
             ]
         )
@@ -436,7 +436,11 @@ class LOcp(AcadosOcp):
         print(f"Solution of ARE: {P}")
         self.P = P
 
-        logging.info("Finding terminal set")
-        x_next = lambda x: (A  - B @ K) @ x
-        c_initial_guess = 1e-2
-        binary_search(P, x_next, c_initial_guess, 1e-6)
+        # STEP 2: Find the approximate control admissable invariant set 
+        logging.info("Finding terminal set ...")
+        ubx = np.array([100, 2*np.pi, 15, np.pi/2, self.max_steering])
+        ubu = np.array([self.max_steering_rate])
+        self.C = estimate_control_amissible_invariant_set(
+            K, A, B, ubx, ubu
+        )
+        logging.info(f"Terminal set found with {self.C.shape[0]} constraints")

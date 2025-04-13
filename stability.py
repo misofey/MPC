@@ -6,6 +6,7 @@ def estimate_control_amissible_invariant_set(K, A, B, ubx, ubu, verbose=False) -
 
     original_constraints = []
     phi = A - B@K
+    phi_np1 = A - B@K
 
     print(f"phi eigen vlaues: {np.linalg.eigvals(phi)}")
     # [A - BK] @ x = phi @ x = [[x_k+1]
@@ -22,16 +23,15 @@ def estimate_control_amissible_invariant_set(K, A, B, ubx, ubu, verbose=False) -
 
     constraints.append(cp.abs(x) <=  ubx.reshape(-1, 1))
     constraints.append(cp.abs(K@x) <= ubu.reshape(-1, 1))
-    opt_vlaues = []
+    opt_values = []
 
     while condition:
         print(f"--- Iteration {n} ---")
-        phi_np1 = np.linalg.matrix_power(phi, n)
         constraints.append(cp.abs(phi_np1 @ x) <=  ubx.reshape(-1, 1))
         constraints.append(cp.abs(K @ (phi_np1 @ x)) <=  ubu.reshape(-1, 1))
         n += 1
-        phi_np1 = np.linalg.matrix_power(phi, n)
-        print(f"phi_np1: {phi_np1}")
+        phi_np1 = phi_np1 @ phi
+        #print(f"phi_np1: {phi_np1}")
         
         try:
 
@@ -41,28 +41,73 @@ def estimate_control_amissible_invariant_set(K, A, B, ubx, ubu, verbose=False) -
                 problem.solve(solver = cp.ECOS, verbose=verbose)
                 opt_value = problem.value
                 print(f"Solution found: {opt_value}")
-                opt_vlaues.append(opt_value)
+                opt_values.append(opt_value)
         except cp.error.SolverError:
             print("Solver error: Problem is infeasible")
+        try:    
+            for j in range(len(ubu)):
+                cost = cp.Maximize((K @ (phi_np1 @ x))[j]/ubu[j]) # check this
+                problem = cp.Problem(cost, constraints)
+                problem.solve(solver = cp.ECOS, verbose=verbose)
+                opt_value = problem.value
+                print(f"Solution found: {opt_value}")
+                opt_values.append(opt_value)
+        except cp.error.SolverError:
+            print("Solver error: Problem is infeasible")
+
+        try:
+
+            for j in range(len(ubx)):
+                cost = cp.Maximize((- phi_np1 @ x)[j]/ubx[j])
+                problem = cp.Problem(cost, constraints)
+                problem.solve(solver = cp.ECOS, verbose=verbose)
+                opt_value = problem.value
+                print(f"Solution found: {opt_value}")
+                opt_values.append(opt_value)
+        except cp.error.SolverError:
+            print("Solver error: Problem negative is infeasible")
         try:    
             for j in range(len(ubu)):
                 cost = cp.Maximize((- K @ (phi_np1 @ x))[j]/ubu[j]) # check this
                 problem = cp.Problem(cost, constraints)
                 problem.solve(solver = cp.ECOS, verbose=verbose)
-                opt_vlaues.append(problem.value)
+                opt_value = problem.value
+                print(f"Solution found: {opt_value}")
+                opt_values.append(opt_value)
         except cp.error.SolverError:
-            print("Solver error: Problem is infeasible")
+            print("Solver error: Problem negative is infeasible")
 
-        #print(f"opt_vlaues: {opt_vlaues}")
-        if np.all(np.array(opt_vlaues) < 1e-5):
+        print(f"opt_vlaues: {opt_values}")
+        if np.all(np.array(opt_values) < 1e0):
             condition = False
-            print(f"n: {n}")
+            print(f"Converged! n: {n}")
             n_max = n
-        if n > 100:
+            C = reconstruct_control_amissible_invariant_set(n, K, A, B, ubx, ubu)
+            return C
+        if n > 1000:
             print("n is too large")
             condition = False
-            
+            C = reconstruct_control_amissible_invariant_set(n, K, A, B, ubx, ubu)
+            return C
+        opt_values = []
 
+        
+
+def reconstruct_control_amissible_invariant_set(n, K, A, B, ubx, ubu) -> float:
+    phi = A - B@K
+    F = np.concat((np.diag(1/ubx), np.diag(-1/ubx), np.zeros((2*len(ubu), len(ubx)))), axis=0)
+    print(f"F: {F.shape}")
+    G = np.concat((np.zeros((2*len(ubx), len(ubu))), np.diag(1/ubu), np.diag(-1/ubu)), axis=0)
+    print(f"G: {G.shape}")
+    C_initial = F+G@K
+    C = C_initial
+    for i in range(n):
+        C_initial = C_initial @ phi
+        print(f"C_initial: {C_initial.shape}")
+        C = np.concatenate((C, C_initial), axis=0)
+    print(f"C: {C.shape}")
+
+    return C
 
 def check_control_amissible_invariance(P, f:callable, c) -> bool:
     
