@@ -441,7 +441,7 @@ class LOcp(AcadosOcp):
 
         # STEP 2: Find the approximate control admissable invariant set 
         logging.info("Finding terminal set ...")
-        ubx = np.array([100, 2*np.pi, 15, np.pi/2, self.max_steering])
+        ubx = np.array([100, 100, 100, 100, self.max_steering])
         ubu = np.array([self.max_steering_rate])
         self.C = estimate_control_amissible_invariant_set(
             K, A, B, ubx, ubu

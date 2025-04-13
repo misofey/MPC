@@ -182,8 +182,9 @@ class StepSimulator:
             )
 
             # logging.info(f"state before optimizing: {self.red_state}")
+            noisy_red_state = self.red_state #+ np.random.normal(0, 0.01, size=self.red_state.shape)
             status, trajectory, inputs = self.MPC_controller.optimize(
-                self.red_state, waypoints, speeds
+                noisy_red_state, waypoints, speeds
             )
             steer = trajectory[1, 6]
 
@@ -374,7 +375,10 @@ class StepSimulator:
             estimated_state_trajectory,
         )
 
-    def dlqr_sim(self, n_steps, K: np.ndarray):
+    def dlqr_sim(self, n_steps, K: np.ndarray = None):
+        if K is None:
+            K = self.MPC_controller.K
+            print("K: ", K)
 
         simulated_state_trajectory = np.zeros((n_steps, self.dynamics.nx))
         simulated_input_trajectory = np.zeros((n_steps, 1))
@@ -392,20 +396,20 @@ class StepSimulator:
             )
 
             # logging.info(f"state before optimizing: {self.red_state}")
-            status, trajectory, inputs = self.MPC_controller.optimize(
-                self.red_state, waypoints, speeds
-            )
-
+            #status, trajectory, inputs = self.MPC_controller.optimize(
+            #    self.red_state, waypoints, speeds
+            #)
+            trajectory = []
             dt = self.dynamics.dt
-
-            steer = K @ self.full_state
-            steer = np.clip(steer, -rate_limit, angle_limit)
+            #x, y, heading, heaing, vy, r, steer
+            print("full_state: ", self.full_state)
+            state = np.concatenate((self.full_state[1:2], self.full_state[3:4], self.full_state[5:8]), axis=0)
+            state[0] -= 1
+            state[1] -= absolute_waypoints[0, 3]
+            print("state: ", state.shape)
+            steer =  -K @ state
+            steer = np.clip(steer, -rate_limit, rate_limit)
             current_steer = self.full_state[-1]
-            steer = np.clip(
-                steer,
-                (-angle_limit - current_steer) / dt,
-                (angle_limit - current_steer) / dt,
-            )
 
             new_state = self.dynamics.rk4_integraton(self.full_state, steer)
 

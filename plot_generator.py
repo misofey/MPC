@@ -38,8 +38,8 @@ state_names = [
     rf"$v_{{y}}$ [m/s]",
     r"r [rad/s]",
     r"$\delta$ [rad]",
-    rf"$\dot{{\delta}}$ [rad/s]",
-    r"d_f",
+    f"$\dot{{\delta}}$"+"[rad/s$^2$]",
+    f"$d_{{F}}$ [m/s$^2$]",
 ]
 
 
@@ -333,35 +333,20 @@ def plot_beta_tuning(model):
 
 
 def plot_initial_condition(model):
-    beta_low = 1
-    beta_high = 10000
+
     N = 50
     time = np.linspace(0, dt * sim_len, sim_len)
+    # Load Q values from a YAML file
 
-    plt.figure(figsize=(2, 1))  # Set figure size
+    plt.figure(figsize=(10, 6))  # Set figure size
 
-    Tf = dt * N
-
-    sim = StepSimulator(
-        N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
-    )
-
-    C_inv = np.linalg.pinv(sim.MPC_controller.C)
-    print(f"C_inv: {C_inv.shape}")
-    x_outside = C_inv @ (1.2 * np.ones((C_inv.shape[1], 1)))
-    print(f"x_outside: {x_outside}")
-    input_constraint = sim.MPC_controller.max_steering_rate
-    K = sim.MPC_controller.K
-    A = sim.MPC_controller.A_stability
-    B = sim.MPC_controller.B_stability
-    phi = A - B @ K
-
-    initial_conditions = [np.zeros((5, 1)), x_outside]
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    for i, x0 in enumerate(initial_conditions):
-
-        # Simulate MPC
+    num_lines = 1  # Number of lines
+    colors = [cmap(i / num_lines) for i in range(num_lines)]  # Generate unique colors
+    states = []
+    models = []
+    for idx in range(num_lines):
+        Tf = dt * N
+        
         sim = StepSimulator(
             N=N,
             Tf=Tf,
@@ -370,55 +355,58 @@ def plot_initial_condition(model):
             model=model,
         )
         state, input, reference = sim.simulate(sim_len)
-        del sim.MPC_controller.solver
+        states.append(state)
+        models.append(f"{sim.model}-q:{0}")
+        
 
-        # Simulate saturated input LQR
-        lqr_state_resuts = phi @ x0
-        print(lqr_state_resuts)
-        lqr_input_results = []
-        references = np.zeros([reference.shape[0], 5])
-        # TODO: comment here the sates given in waypoints
-        references[:, :3] = np.concatenate((reference[:, :2], reference[:, 3:]), axis=1)
-
-        for j, t in enumerate(time):
-            x = lqr_state_resuts[:, -1]
-            u = K @ (x - references[j, :])
-            if np.abs(u) > input_constraint:
-                u = np.sign(u) * np.array([input_constraint])
-            print((A @ (x - references[j, :]) + B @ u).shape)
-            lqr_state_resuts = np.concatenate(
-                (
-                    lqr_state_resuts,
-                    (A @ (x - references[j, :]) + B @ u).reshape((-1, 1)),
-                ),
-                axis=1,
-            )
-            lqr_input_results.append(u)
-
-        ax = axes[i]
-        print(lqr_state_resuts.shape)
-        ax.plot(
-            time,
+        state, input, reference = sim.dlqr_sim(sim_len)
+        del sim.MPC_controller.solver 
+        plt.plot(
+            np.linspace(0, dt * sim_len, sim_len),
             state[:, 1],
-            label="MPC",
+            label=f"$q_{{y}}=$",  # Use LaTeX formatting for subscript
             linewidth=2,
+            color=colors[idx],
         )
-        ax.plot(
-            time,
-            lqr_state_resuts[1, :-1],
-            label="Saturated Input LQR",
+        plt.plot(
+            np.linspace(0, dt * sim_len, sim_len),
+            input[:, -1],
+            linestyle="--",
             linewidth=2,
+            color=colors[idx],
         )
 
     # Add labels for the main plot
     plt.xlabel("Time [s]")
-    plt.ylabel(f"{state_names[1]}")
+    plt.ylabel(f"{state_names[1]} [m]")
+
+    #compute_performance_metrics(states, models)
+
+    # Add the main legend for q values
+    # Add the main legend for q values
+    main_legend = plt.legend(loc="best", fontsize=10, frameon=True)
+    plt.gca().add_artist(main_legend)  # Ensure the main legend stays on the plot
+    plt.plot(time, reference[:, 1], label="Reference", linestyle=":")
+    # Add a separate legend for line styles
+    if idx == num_lines - 1:  # Add this legend only once
+        custom_lines = [
+            Line2D([0], [0], color="black", linewidth=2, linestyle="-"),
+            Line2D([0], [0], color="black", linewidth=2, linestyle="--"),
+            Line2D([0], [0], color="black", linewidth=2, linestyle=":"),
+        ]
+        plt.legend(
+            custom_lines,
+            ["Position y", "Steering rate", "Reference"],
+            loc="upper right",
+            fontsize=15,
+            frameon=True,
+        )
 
     # Ensure the 'plots' directory exists
     os.makedirs("plots", exist_ok=True)
 
     # Save the figure
-    plt.savefig(f"plots/beta_tuning_plot_{model}.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"plots/q_y_tuning_plot_{model}.png", dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -528,12 +516,12 @@ def plot_r_tuning(model):
 
 
 def plot_all_state_response(model):
-    N = 50
+    N = 80
     Tf = dt * N
     sim = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model=model
     )
-    state, input = sim.simulate(sim_len)
+    state, input, ref= sim.simulate(sim_len)
     time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
 
     compute_time_metrics([time_data])
@@ -924,7 +912,7 @@ def plot_all_states_only_of():
 
 
 def plot_of_vs_l():
-    N = 100
+    N = 50
     Tf = dt * N
     sim_of = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="OFL"
@@ -955,7 +943,7 @@ def plot_of_vs_l():
     sim_l = StepSimulator(
         N=N, Tf=Tf, acados_print_level=-1, starting_state=starting_state, model="L"
     )
-    state_l, input_l = sim_l.simulate(sim_len)
+    state_l, input_l, ref = sim_l.simulate(sim_len)
     time_data_l = (
         np.array(sim_l.ocp.metrics["runtime"]) * 1000
     )  # Convert to milliseconds
@@ -1007,7 +995,7 @@ def plot_of_vs_l():
             )
         axes[plot_id].set_ylabel(state_names[state_id], labelpad=5.0)
         axes[plot_id].legend(
-            loc="upper right", fontsize=10, frameon=True
+            loc="upper right", fontsize=15, frameon=True
         )  # Place labels in the same corner
         axes[plot_id].grid(True)
         results_l.append(performance_metrics(y, state_id))
@@ -1015,10 +1003,10 @@ def plot_of_vs_l():
     # Plot the input on the last subplot
     axes[-1].plot(time, input_of[:, -1], label="OF", linewidth=2, color=colors[-1])
     axes[-1].plot(time, input_l[:, -1], label="L", linewidth=2, color=colors[-4])
-    axes[-1].set_xlabel("Time (s)")
-    axes[-1].set_ylabel(r"$\dot{\delta}$")
+    axes[-1].set_xlabel("Time [s]")
+    axes[-1].set_ylabel(r"$\dot{\delta}$" +" [rad/s$^2$]")
     axes[-1].legend(
-        loc="upper right", fontsize=10, frameon=True
+        loc="upper right", fontsize=15, frameon=True
     )  # Place labels in the same corner
     axes[-1].grid(True)
 
@@ -1027,20 +1015,20 @@ def plot_of_vs_l():
         time,
         state_of[:, indices["d_f"]],
         linewidth=2,
-        label="d_f truth",
+        label="Truth",
         color=colors[num_subplots],
     )
     axes[-2].plot(
         time,
         estimate_of[:, indices["d_f"]],
         linewidth=2,
-        label="d_f estimate",
+        label="estimate",
         linestyle="--",
         color=colors[num_subplots],
     )
     axes[-2].set_ylabel(state_names[indices["d_f"]])
     axes[-2].legend(
-        loc="lower right", fontsize=10, frameon=True
+        loc="lower right", fontsize=15, frameon=True
     )  # Place labels in the same corner
     axes[-2].grid(True)
 
@@ -1154,14 +1142,14 @@ if __name__ == "__main__":
 
     # plot_compare_controllers()
     # plot_ekf_convergence()
-    # plot_ekf_convergence()
+    #plot_ekf_convergence()
     # plot_all_states_only_of()
-    plot_all_state_response("NL")
+    #plot_all_state_response("L")
     # plot_q_tuning()
     # plot_n_tuning("LPV")
     # plot_q_y_tuning("LPV")
     # plot_beta_tuning("L")
-    # plot_initial_condition("L")
+    plot_initial_condition("L")
     # plot_r_tuning("LPV")
     # plot_compare_controllers()
-    # plot_of_vs_l()
+    #plot_of_vs_l()

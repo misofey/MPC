@@ -30,7 +30,7 @@ class OFLOcp(AcadosOcp):
                 handlers=[logging.FileHandler("debug.log"), logging.StreamHandler()],
             )
         # Load parameters from a YAML file
-        with open("parameters.yaml", "r") as file:
+        with open("parameters_L.yaml", "r") as file:
             params = yaml.safe_load(file)
 
         # Assign parameters to class attributes
