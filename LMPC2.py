@@ -257,7 +257,7 @@ class LOcp(AcadosOcp):
             (self.n_states + self.n_inputs, self.n_states + self.n_inputs)
         )
         # Terminal constraint does not constrain x position and input
-        self.cost.W_e[1:-1, 1:-1] = 1 / 2 * self.P
+        self.cost.W_e[1:-1, 1:-1] = self.params["controller"]["beta"]*1 / 2 * self.P
 
     def set_solver_options(self) -> None:
         # set QP solver and integration
@@ -387,6 +387,8 @@ class LOcp(AcadosOcp):
 
         print(f"Cont state matrix:\n {A}")
         print(f"Cont input matric:\n {B}")
+        self.A_stability = A
+        self.B_stability = B
         print(f"Sampling time: {self.Tf/self.N}")
 
         # Get Q and R matrices from W matrix
@@ -435,6 +437,7 @@ class LOcp(AcadosOcp):
 
         print(f"Solution of ARE: {P}")
         self.P = P
+        self.K = K
 
         # STEP 2: Find the approximate control admissable invariant set 
         logging.info("Finding terminal set ...")
