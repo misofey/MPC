@@ -1,6 +1,5 @@
 import numpy as np
-import scipy as sp
-from continuous_dynamics import Dynamics, indices
+from utils.continuous_dynamics import Dynamics
 
 
 class CarEKF:

@@ -1,4 +1,4 @@
-from continuous_dynamics import indices
+from utils.continuous_dynamics import indices
 from simulator import StepSimulator
 import matplotlib.pyplot as plt
 import numpy as np
@@ -1234,8 +1234,8 @@ if __name__ == "__main__":
     # plot_n_tuning("LPV")
     # plot_q_y_tuning("LPV")
     # plot_beta_tuning("L")
-    plot_initial_condition("L")
+    # plot_initial_condition("L")
     # plot_r_tuning("LPV")
     # plot_compare_controllers()
-    # plot_of_vs_l()
+    plot_of_vs_l()
     # plot_dlqr()

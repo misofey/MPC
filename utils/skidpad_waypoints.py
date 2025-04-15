@@ -3,13 +3,15 @@ import numba
 
 import matplotlib.pyplot as plt
 
-"""skidpad dimensions are hardcoded"""
+# skidpad dimensions are hardcoded
 r = 9.125
 center = 16.75
 half_width = 1.5
 lap_length = 2 * r * np.pi
 end_straight_length = 15
 """
+
+
 lap counter:
 0 - initial straight
 1-4 eight half laps
@@ -47,6 +49,8 @@ spec = [
 
 # @numba.experimental.jitclass(spec)
 class SkidpadPlanner:
+    """position and heading trajectory generator for skidpad"""
+
     def __init__(
         self,
         target_vel: float,

@@ -70,16 +70,17 @@ function [A,B,C,D,E,dx0,x0,u0,y0,Delays] = dataFcnSteering(~,vx)
     C_data_y = [1.537405752168591e+04, 2.417765976460659e+04, 3.121158998819641e+04, 3.636055041362088e+04];
     C_data_x = [300 500 700 900];
     wheelbase = 1.53;
-    lr = wheelbase*(1-0.51);
+    lr = wheelbase*(1-0.57);
     lf = wheelbase - lr;
     % [front, rear]
     C = [interp1(C_data_x, C_data_y, (9.81*m/2)*(lr/wheelbase))*2 interp1(C_data_x, C_data_y, (9.81*m/2)*(lf/wheelbase))*2];
     L = [lf lr];
 
-    steering_scaling = 0.4 /(pi/2);
+    % steering_scaling = 0.4 /(pi/2);
+    steering_scaling = 1;
 
-    A = [-(C(1) + C(2)) / (m * vx), vx + (C(2)*L(2) - C(1)*L(1)) / (m * vx), 0;
-        (C(2)*L(2) - C(1)*L(1)) / Iz, -(L(1)*L(1)*C(1) + L(2)*L(2)*C(2)) / (Iz * vx), 0;
+    A = [-(C(1) + C(2)) / (m * vx), -vx + (C(2)*L(2) - C(1)*L(1)) / (m * vx), 0;
+        (C(2)*L(2) - C(1)*L(1)) / (Iz * vx), -(L(1)*L(1)*C(1) + L(2)*L(2)*C(2)) / (Iz * vx), 0;
         0 1 0];
 
     B = [-C(1) / m; -(L(1) * C(1)) / Iz; 0] * steering_scaling;

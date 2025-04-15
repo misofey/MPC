@@ -87,6 +87,21 @@ class Dynamics:
 
         return float(Cf), float(Cr)
 
+    def linear_steering_model(self, vx) -> (np.ndarray, np.ndarray):
+        A = np.zeros([2, 2])
+        B = np.zeros([1, 2])
+
+        A[0, 0] = -(self.Cf + self.Cr) / (self.m * vx)
+        A[1, 0] = -vx + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * vx)
+        A[0, 1] = (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * vx)
+        A[1, 1] = -(self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr) / (
+            self.I_z * vx
+        )
+
+        B[0, 0] = -self.Cf / self.m
+        B[0, 1] = -self.Cf * self.lf / self.I_z
+        return A, B
+
     def single_track_model(self, x, u) -> np.ndarray:
         x_dot = np.zeros_like(x)
         if self.disturbed:
@@ -95,26 +110,21 @@ class Dynamics:
         else:
             steering_disturbance = 0
             force_disturbance = 0
+
+        A, B = self.linear_steering_model(x[indices["vx"]])
+
         x_dot[0] = x[2] * x[4] - x[3] * x[5]  # px
         x_dot[1] = x[3] * x[4] + x[2] * x[5]  # py
         x_dot[2] = -x[6] * x[3]  # cos_head
         x_dot[3] = x[6] * x[2]  # sin_head
         x_dot[4] = 0  # vx
         x_dot[5] = (
-            (
-                -(self.Cf + self.Cr) / (self.m * x[4]) * x[5]
-                + (-x[4] + (self.Cr * self.lr - self.Cf * self.lf) / (self.m * x[4]))
-                * x[6]
-            )
-            - self.Cf / self.m * (x[7] + steering_disturbance)
+            (A[0, 0] * x[5] + A[1, 0] * x[6])
+            + B[0, 0] * (x[7] + steering_disturbance)
             + force_disturbance
         )  # vy
         x_dot[6] = (
-            (self.lr * self.Cr - self.lf * self.Cf) / (self.I_z * x[4]) * x[5]
-            - (self.lf * self.lf * self.Cf + self.lr * self.lr * self.Cr)
-            / (self.I_z * x[4])
-            * x[6]
-            - (self.Cf * self.lf) / self.I_z * (x[7] + steering_disturbance)
+            A[0, 1] * x[5] + A[1, 1] * x[6] + B[0, 1] * (x[7] + steering_disturbance)
         )  # r
         x_dot[7] = u
 

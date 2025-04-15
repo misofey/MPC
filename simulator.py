@@ -1,5 +1,3 @@
-import os
-
 # if "LD_LIBRARY_PATH" not in os.environ:
 #     os.environ["LD_LIBRARY_PATH"] = (
 #         "/home/miso/DUT/DUT25-Autonomous/src/controllers/acados/lib"
@@ -29,13 +27,11 @@ from LMPC2 import LOcp
 from LPVMPC import LPVOcp
 from OFLMPC2 import OFLOcp
 from EKF import CarEKF
-from continuous_dynamics import Dynamics, indices
+from utils.continuous_dynamics import Dynamics, indices
 
 import matplotlib.pyplot as plt
 import numpy as np
-from utils.path_planning import SkidpadPlanner
 from utils.step_planning import StepPlanner
-from utils import path_planning
 from utils import plotting
 import logging
 from skidpad_simulator import SkidpadSimulator
@@ -182,7 +178,9 @@ class StepSimulator:
             )
 
             # logging.info(f"state before optimizing: {self.red_state}")
-            noisy_red_state = self.red_state #+ np.random.normal(0, 0.01, size=self.red_state.shape)
+            noisy_red_state = (
+                self.red_state
+            )  # + np.random.normal(0, 0.01, size=self.red_state.shape)
             status, trajectory, inputs = self.MPC_controller.optimize(
                 noisy_red_state, waypoints, speeds
             )

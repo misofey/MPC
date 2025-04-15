@@ -1,13 +1,12 @@
 from NLMPC import NLOcp
 from LMPC2 import LOcp
 from LPVMPC import LPVOcp
-from EKF import CarEKF
-from continuous_dynamics import Dynamics
+from utils.continuous_dynamics import Dynamics
 
 import matplotlib.pyplot as plt
 import numpy as np
-from utils.path_planning import SkidpadPlanner
-from utils import path_planning
+from utils.skidpad_waypoints import SkidpadPlanner
+from utils import skidpad_waypoints
 from utils import plotting
 import logging
 

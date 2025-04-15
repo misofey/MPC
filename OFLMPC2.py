@@ -1,14 +1,10 @@
-from matplotlib import pyplot as plt
 from acados_template import AcadosOcp, AcadosModel, AcadosOcpSolver
 import casadi as cs
 import numpy as np
 import control as ct
 import sympy as sp
-from pprint import pprint as pr
 import yaml
 import logging
-
-from continuous_dynamics import indices
 
 
 class OFLOcp(AcadosOcp):
