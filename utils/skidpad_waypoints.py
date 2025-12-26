@@ -2,6 +2,8 @@ import numpy as np
 import numba
 
 import matplotlib.pyplot as plt
+from numpy.ma.core import absolute
+from prompt_toolkit.key_binding.bindings.search import abort_search
 
 # skidpad dimensions are hardcoded
 r = 9.125
@@ -253,6 +255,7 @@ class SkidpadPlanner:
 
         waypoints = self.progresses2position_and_heading(progresses)
         self.prev_progress = current_progress
+        absolute_waypoints = waypoints.copy()
 
         waypoints[:, 0] -= x
         waypoints[:, 1] -= y
@@ -262,7 +265,7 @@ class SkidpadPlanner:
         )
         waypoints[:, 2:] = waypoints[:, 2:] @ heading_derotation
         waypoints[:, :2] = waypoints[:, :2] @ heading_derotation
-        return waypoints, speeds, progresses[0], heading_derotation
+        return waypoints, speeds, progresses[0], heading_derotation, absolute_waypoints
 
     def request_desired_speed(self, progress) -> float:
         if progress < self.braking_zone_1_start:

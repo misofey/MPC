@@ -1,3 +1,4 @@
+from skidpad_simulator import SkidpadSimulator
 from utils.continuous_dynamics import indices
 from simulator import StepSimulator
 import matplotlib.pyplot as plt
@@ -20,7 +21,7 @@ starting_state = [
     0.0,
     1.0,
     0.0,  # starting pose
-    15.0,
+    8.0,
     0.0,
     0.0,  # starting velocity
     0.0,  # starting steering angle
@@ -1222,6 +1223,80 @@ def compute_performance_metrics(states: list, models: list = ["unknown"]):
     print(df)
 
 
+def plot_skidpad_lpv():
+    N = 80
+    Tf = dt * N
+    sim = SkidpadSimulator(
+        N=N,
+        Tf=Tf,
+        acados_print_level=-1,
+        starting_state=starting_state,
+        starting_lap=0,
+        model="LPV",
+    )
+    sim_len = 3000
+    state, input, ref = sim.simulate(sim_len)
+    time_data = np.array(sim.ocp.metrics["runtime"]) * 1000  # Convert to milliseconds
+
+    compute_time_metrics([time_data])
+
+    del sim.MPC_controller.solver  # Ensure garbage collection
+
+    # num_states = state.shape[1]
+    # num_subplots = num_states + 1  # Include input subplot
+    # fig, axes = plt.subplots(
+    #     num_subplots, 1, figsize=(10, 2 * num_subplots), sharex=True
+    # )
+
+    time = np.linspace(0, dt * sim_len, sim_len)
+    # colors = [
+    #     cmap(i / num_subplots) for i in range(num_subplots)
+    # ]  # Use the cmap variable for colors
+
+    results = []  # To store metrics for each state
+
+    # Plot each state on a separate subplot
+    # for i in range(0, num_states):
+    #     y = state[:, i]
+    #     axes[i].plot(time, y, label=f"State x{i+1}", linewidth=2, color=colors[i])
+    #     axes[i].set_ylabel(state_names[i])
+    #     axes[i].legend(
+    #         loc="upper right", fontsize=15, frameon=True
+    #     )  # Place labels in the same corner
+    #     axes[i].grid(True)
+
+    plt.plot(state[:, 0], state[:, 1])
+    plt.plot(ref[:, 0], ref[:, 1], linestyle="--")
+
+    plt.figure()
+    # Plot the input on the last subplot
+    plt.plot(time, input[:, -1], label="Input", linewidth=2)
+    # plt.xlabel("Time (s)")
+    # plt.set_ylabel("Input Amplitude")
+    plt.legend(
+        loc="upper right", fontsize=15, frameon=True
+    )  # Place labels in the same corner
+    plt.grid(True)
+    # Plot reference on pos_y
+    # axes[1].plot(time, reference[:, 1], label="Reference", linestyle=":")
+    plt.legend(loc="upper right", fontsize=15, frameon=True)
+    # Ensure the 'plots' directory exists
+    os.makedirs("plots", exist_ok=True)
+
+    # Save the figure
+    plt.tight_layout()
+    # plt.savefig(f"plots/all_state_response_{}.png", dpi=300, bbox_inches="tight")
+
+    # Print the results as a DataFrame
+    # df = pd.DataFrame(results)
+    # print(df)
+
+    # Save the table to a CSV file
+    # df.to_csv(f"plots/state_metrics_{model}.csv", index=False)
+
+    plt.show()
+
+
 if __name__ == "__main__":
 
     # plot_compare_controllers()
@@ -1237,5 +1312,6 @@ if __name__ == "__main__":
     # plot_initial_condition("L")
     # plot_r_tuning("LPV")
     # plot_compare_controllers()
-    plot_of_vs_l()
+    # plot_of_vs_l()
     # plot_dlqr()
+    plot_skidpad_lpv()
